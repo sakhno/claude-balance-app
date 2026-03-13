@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Claude Balance</string>
+    <string name="widget_description">Shows your Claude API usage and balance</string>
+
+    <!-- Settings labels -->
+    <string name="settings_title">Settings</string>
+    <string name="api_key_label">Anthropic API Key</string>
+    <string name="api_key_hint">sk-ant-...</string>
+    <string name="update_interval_label">Update Interval</string>
+    <string name="budget_limit_label">Monthly Budget Limit ($)</string>
+    <string name="alert_usage_threshold_label">Alert when usage above (%)</string>
+    <string name="alert_balance_threshold_label">Alert when estimated spend above ($)</string>
+    <string name="widget_transparency_label">Widget Transparency (%)</string>
+    <string name="widget_theme_label">Widget Theme</string>
+    <string name="save_settings">Save Settings</string>
+
+    <!-- Widget labels -->
+    <string name="widget_usage_label">Token Usage</string>
+    <string name="widget_balance_label">Est. Spend</string>
+    <string name="widget_reset_label">Resets in</string>
+    <string name="widget_updated_label">Updated</string>
+    <string name="widget_no_data">No data yet</string>
+    <string name="widget_tap_to_config">Tap to configure</string>
+
+    <!-- Intervals -->
+    <string-array name="update_interval_labels">
+        <item>15 minutes</item>
+        <item>30 minutes</item>
+        <item>1 hour</item>
+        <item>6 hours</item>
+    </string-array>
+    <string-array name="update_interval_values">
+        <item>15</item>
+        <item>30</item>
+        <item>60</item>
+        <item>360</item>
+    </string-array>
+
+    <!-- Themes -->
+    <string-array name="widget_theme_labels">
+        <item>System Default</item>
+        <item>Light</item>
+        <item>Dark</item>
+    </string-array>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name">Claude Balance Alerts</string>
+    <string name="notification_channel_description">Alerts for API usage and balance thresholds</string>
+    <string name="notification_usage_title">High API Usage</string>
+    <string name="notification_balance_title">Budget Alert</string>
+</resources>
