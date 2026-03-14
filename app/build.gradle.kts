@@ -18,10 +18,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        create("release") {
-            val keystoreFile = System.getenv("KEYSTORE_PATH")
-            if (!keystoreFile.isNullOrEmpty()) {
+    val keystoreFile = System.getenv("KEYSTORE_PATH")
+    if (!keystoreFile.isNullOrEmpty()) {
+        signingConfigs {
+            create("release") {
                 storeFile = file(keystoreFile)
                 storePassword = System.getenv("STORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
@@ -38,7 +38,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            val hasKeystore = !System.getenv("KEYSTORE_PATH").isNullOrEmpty()
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
