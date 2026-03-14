@@ -15,8 +15,9 @@ class AlertManager(private val context: Context) {
 
     companion object {
         const val CHANNEL_ID = "claude_balance_alerts"
-        const val NOTIFICATION_ID_USAGE = 1001
-        const val NOTIFICATION_ID_BALANCE = 1002
+        const val NOTIFICATION_ID_SESSION = 1001
+        const val NOTIFICATION_ID_WEEKLY = 1002
+        const val NOTIFICATION_ID_BALANCE = 1003
     }
 
     init {
@@ -37,59 +38,68 @@ class AlertManager(private val context: Context) {
         }
     }
 
-    fun sendUsageAlert(usagePercent: Int, currentCost: Double, budgetLimit: Double) {
+    private fun buildPendingIntent(): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntent = PendingIntent.getActivity(
+        return PendingIntent.getActivity(
             context, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
 
+    fun sendSessionUsageAlert(usagePercent: Int) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(context.getString(R.string.notification_usage_title))
-            .setContentText(
-                "You've used $usagePercent% of your budget. " +
-                "Current spend: \$${"%.2f".format(currentCost)} / \$${"%.2f".format(budgetLimit)}"
-            )
+            .setContentText("Session usage is at $usagePercent%")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(buildPendingIntent())
             .setAutoCancel(true)
             .build()
-
         try {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_USAGE, notification)
-        } catch (e: SecurityException) {
-            // Permission not granted — silently skip
-        }
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_SESSION, notification)
+        } catch (_: SecurityException) { /* permission not granted */ }
     }
 
-    fun sendBalanceAlert(currentCost: Double, threshold: Double) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+    fun sendWeeklyUsageAlert(usagePercent: Int) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("High Weekly Usage")
+            .setContentText("Weekly (all models) usage is at $usagePercent%")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(buildPendingIntent())
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_WEEKLY, notification)
+        } catch (_: SecurityException) { /* permission not granted */ }
+    }
 
+    fun sendLowBalanceAlert(remainingUsd: Double, thresholdUsd: Double) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(context.getString(R.string.notification_balance_title))
             .setContentText(
-                "Estimated spend \$${"%.2f".format(currentCost)} has exceeded " +
-                "alert threshold \$${"%.2f".format(threshold)}"
+                "Remaining balance \$${"%.2f".format(remainingUsd)} is below " +
+                "alert threshold \$${"%.2f".format(thresholdUsd)}"
             )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(buildPendingIntent())
             .setAutoCancel(true)
             .build()
-
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_BALANCE, notification)
-        } catch (e: SecurityException) {
-            // Permission not granted — silently skip
-        }
+        } catch (_: SecurityException) { /* permission not granted */ }
+    }
+
+    // ── Legacy overloads kept for any leftover call-sites ────────────────────
+
+    fun sendUsageAlert(usagePercent: Int, currentCost: Double, budgetLimit: Double) {
+        sendSessionUsageAlert(usagePercent)
+    }
+
+    fun sendBalanceAlert(currentCost: Double, threshold: Double) {
+        sendLowBalanceAlert(currentCost, threshold)
     }
 }

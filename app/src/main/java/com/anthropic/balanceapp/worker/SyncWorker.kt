@@ -2,8 +2,9 @@ package com.anthropic.balanceapp.worker
 
 import android.content.Context
 import androidx.work.*
-import com.anthropic.balanceapp.api.AnthropicApiClient
+import com.anthropic.balanceapp.api.AnthropicBalanceClient
 import com.anthropic.balanceapp.api.ApiResult
+import com.anthropic.balanceapp.api.ClaudeAiApiClient
 import com.anthropic.balanceapp.data.AppDataStore
 import com.anthropic.balanceapp.notifications.AlertManager
 import com.anthropic.balanceapp.widget.ClaudeWidgetReceiver
@@ -15,67 +16,81 @@ class SyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val dataStore = AppDataStore(appContext)
-    private val apiClient = AnthropicApiClient()
+    private val claudeClient = ClaudeAiApiClient()
+    private val balanceClient = AnthropicBalanceClient()
     private val alertManager = AlertManager(appContext)
 
     override suspend fun doWork(): Result {
         val settings = dataStore.getSettings()
 
-        if (settings.apiKey.isBlank()) {
-            return Result.success() // Nothing to do without API key
+        var anySuccess = false
+        var anyRetryNeeded = false
+
+        // ── 1. Fetch Claude.ai usage ──────────────────────────────────────────
+        if (settings.claudeSessionToken.isNotBlank()) {
+            when (val result = claudeClient.fetchUsage(settings.claudeSessionToken)) {
+                is ApiResult.Success -> {
+                    val usage = result.data
+                    dataStore.saveClaudeUsage(usage)
+                    anySuccess = true
+
+                    if (settings.alertsEnabled) {
+                        if (usage.sessionPercent >= settings.alertSessionThresholdPercent) {
+                            alertManager.sendSessionUsageAlert(usage.sessionPercent)
+                        }
+                        if (usage.weeklyPercent >= settings.alertWeeklyThresholdPercent) {
+                            alertManager.sendWeeklyUsageAlert(usage.weeklyPercent)
+                        }
+                    }
+                }
+                is ApiResult.Error -> {
+                    dataStore.saveClaudeUsageError(result.message)
+                    // Auth errors should not retry
+                    if (result.code != 401 && result.code != 403) {
+                        anyRetryNeeded = true
+                    }
+                }
+                is ApiResult.NetworkError -> {
+                    anyRetryNeeded = true
+                }
+            }
         }
 
-        return when (val result = apiClient.fetchMonthlyUsage(settings.apiKey)) {
-            is ApiResult.Success -> {
-                val usage = result.data
-                dataStore.saveCachedUsage(
-                    inputTokens = usage.totalInputTokens,
-                    outputTokens = usage.totalOutputTokens,
-                    costUsd = usage.estimatedCostUsd,
-                    periodStart = usage.periodStart,
-                    periodEnd = usage.periodEnd
-                )
+        // ── 2. Fetch API billing balance ──────────────────────────────────────
+        if (settings.anthropicApiKey.isNotBlank()) {
+            when (val result = balanceClient.fetchBalance(settings.anthropicApiKey)) {
+                is ApiResult.Success -> {
+                    val balance = result.data
+                    dataStore.saveApiBalance(balance)
+                    anySuccess = true
 
-                // Check alert thresholds
-                if (settings.alertsEnabled) {
-                    val budgetUsagePercent = if (settings.monthlyBudgetUsd > 0) {
-                        (usage.estimatedCostUsd / settings.monthlyBudgetUsd * 100).toInt()
-                    } else 0
-
-                    if (budgetUsagePercent >= settings.alertUsageThresholdPercent) {
-                        alertManager.sendUsageAlert(
-                            budgetUsagePercent,
-                            usage.estimatedCostUsd,
-                            settings.monthlyBudgetUsd
-                        )
-                    }
-
-                    if (usage.estimatedCostUsd >= settings.alertBalanceThresholdUsd) {
-                        alertManager.sendBalanceAlert(
-                            usage.estimatedCostUsd,
-                            settings.alertBalanceThresholdUsd
-                        )
+                    if (settings.alertsEnabled) {
+                        if (balance.remainingUsd <= settings.alertBalanceThresholdUsd) {
+                            alertManager.sendLowBalanceAlert(
+                                balance.remainingUsd,
+                                settings.alertBalanceThresholdUsd
+                            )
+                        }
                     }
                 }
-
-                // Trigger widget update
-                ClaudeWidgetReceiver.updateWidgets(applicationContext)
-
-                Result.success()
-            }
-            is ApiResult.Error -> {
-                dataStore.saveCacheError(result.message)
-                ClaudeWidgetReceiver.updateWidgets(applicationContext)
-                // Don't retry on auth errors
-                if (result.code == 401 || result.code == 403) {
-                    Result.failure()
-                } else {
-                    Result.retry()
+                is ApiResult.Error -> {
+                    dataStore.saveApiBalanceError(result.message)
+                    if (result.code != 401 && result.code != 403) {
+                        anyRetryNeeded = true
+                    }
+                }
+                is ApiResult.NetworkError -> {
+                    anyRetryNeeded = true
                 }
             }
-            is ApiResult.NetworkError -> {
-                Result.retry()
-            }
+        }
+
+        // Update widget regardless of outcome so stale/error state is shown
+        ClaudeWidgetReceiver.updateWidgets(applicationContext)
+
+        return when {
+            anyRetryNeeded && !anySuccess -> Result.retry()
+            else -> Result.success()
         }
     }
 

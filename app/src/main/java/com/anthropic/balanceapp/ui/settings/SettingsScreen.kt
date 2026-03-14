@@ -19,6 +19,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.anthropic.balanceapp.api.formatResetTime
+import com.anthropic.balanceapp.api.models.ApiBalance
+import com.anthropic.balanceapp.api.models.ClaudeUsageData
 import com.anthropic.balanceapp.data.WidgetTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -32,9 +35,6 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val settings = uiState.settings
-    val cached = uiState.cachedUsage
-
-    var showApiKey by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -52,9 +52,12 @@ fun SettingsScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
                 actions = {
+                    val hasAnyCredential =
+                        settings.claudeSessionToken.isNotBlank() ||
+                        settings.anthropicApiKey.isNotBlank()
                     IconButton(
                         onClick = { viewModel.syncNow() },
-                        enabled = settings.apiKey.isNotBlank() && !uiState.isSyncing
+                        enabled = hasAnyCredential && !uiState.isSyncing
                     ) {
                         if (uiState.isSyncing) {
                             CircularProgressIndicator(
@@ -77,27 +80,32 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Usage summary card
-            if (cached.fetchedAtMs > 0) {
-                UsageSummaryCard(uiState = uiState)
-            } else if (cached.lastError.isNotEmpty()) {
-                ErrorCard(error = cached.lastError)
-            }
+            // Live data summary cards
+            UsageSummaryCard(usage = uiState.claudeUsage)
+            BalanceSummaryCard(balance = uiState.apiBalance)
 
-            // API Key section
-            SectionCard(title = "API Configuration") {
+            // ── Section 1: Claude.ai Usage Tracking ──────────────────────────
+            SectionCard(title = "Claude.ai Usage Tracking") {
+                Text(
+                    text = "Get from claude.ai browser cookies → sessionKey",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                var showToken by remember { mutableStateOf(false) }
                 OutlinedTextField(
-                    value = settings.apiKey,
-                    onValueChange = { viewModel.updateApiKey(it) },
-                    label = { Text("Anthropic API Key") },
-                    placeholder = { Text("sk-ant-api03-...") },
-                    visualTransformation = if (showApiKey) VisualTransformation.None
+                    value = settings.claudeSessionToken,
+                    onValueChange = { viewModel.updateClaudeSessionToken(it) },
+                    label = { Text("Session Token") },
+                    placeholder = { Text("sk-ant-sid01-...") },
+                    visualTransformation = if (showToken) VisualTransformation.None
                     else PasswordVisualTransformation(),
                     trailingIcon = {
-                        IconButton(onClick = { showApiKey = !showApiKey }) {
+                        IconButton(onClick = { showToken = !showToken }) {
                             Icon(
-                                if (showApiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showApiKey) "Hide" else "Show"
+                                if (showToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showToken) "Hide" else "Show"
                             )
                         }
                     },
@@ -107,43 +115,98 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                OutlinedButton(
+                    onClick = { viewModel.validateSessionToken() },
+                    enabled = settings.claudeSessionToken.isNotBlank() &&
+                              !uiState.isValidatingSessionToken,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedButton(
-                        onClick = { viewModel.validateApiKey() },
-                        enabled = settings.apiKey.isNotBlank() && !uiState.isValidatingKey,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (uiState.isValidatingKey) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("Validate Key")
-                        }
+                    if (uiState.isValidatingSessionToken) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Test connection")
                     }
                 }
 
-                AnimatedVisibility(visible = uiState.keyValidationResult != null) {
-                    uiState.keyValidationResult?.let { result ->
-                        val isSuccess = result.startsWith("API key is valid")
+                AnimatedVisibility(visible = uiState.sessionTokenValidationResult != null) {
+                    uiState.sessionTokenValidationResult?.let { result ->
+                        val isSuccess = result.startsWith("Session token is valid")
                         Text(
                             text = result,
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isSuccess) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error,
+                                    else MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
             }
 
-            // Sync settings
-            SectionCard(title = "Sync Settings") {
+            // ── Section 2: API Balance Tracking ──────────────────────────────
+            SectionCard(title = "API Balance Tracking") {
+                Text(
+                    text = "Requires an Admin API key with billing access (console.anthropic.com)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                var showKey by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = settings.anthropicApiKey,
+                    onValueChange = { viewModel.updateAnthropicApiKey(it) },
+                    label = { Text("Admin API Key") },
+                    placeholder = { Text("sk-ant-api03-...") },
+                    visualTransformation = if (showKey) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showKey = !showKey }) {
+                            Icon(
+                                if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showKey) "Hide" else "Show"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { viewModel.validateApiKey() },
+                    enabled = settings.anthropicApiKey.isNotBlank() && !uiState.isValidatingApiKey,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (uiState.isValidatingApiKey) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Test connection")
+                    }
+                }
+
+                AnimatedVisibility(visible = uiState.apiKeyValidationResult != null) {
+                    uiState.apiKeyValidationResult?.let { result ->
+                        val isSuccess = result.startsWith("API key is valid")
+                        Text(
+                            text = result,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isSuccess) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── Section 3: Widget Settings ────────────────────────────────────
+            SectionCard(title = "Widget Settings") {
                 Text(
                     text = "Update Interval",
                     style = MaterialTheme.typography.labelMedium,
@@ -165,83 +228,9 @@ fun SettingsScreen(
                         )
                     }
                 }
-            }
-
-            // Budget settings
-            SectionCard(title = "Budget & Alerts") {
-                var budgetText by remember(settings.monthlyBudgetUsd) {
-                    mutableStateOf(settings.monthlyBudgetUsd.let {
-                        if (it == it.toLong().toDouble()) it.toLong().toString()
-                        else "%.2f".format(it)
-                    })
-                }
-
-                OutlinedTextField(
-                    value = budgetText,
-                    onValueChange = { text ->
-                        budgetText = text
-                        text.toDoubleOrNull()?.let { viewModel.updateBudget(it) }
-                    },
-                    label = { Text("Monthly Budget (USD)") },
-                    prefix = { Text("$") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Enable Alerts",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Switch(
-                        checked = settings.alertsEnabled,
-                        onCheckedChange = { viewModel.updateAlertsEnabled(it) }
-                    )
-                }
-
-                AnimatedVisibility(visible = settings.alertsEnabled) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Alert when budget usage exceeds: ${settings.alertUsageThresholdPercent}%",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Slider(
-                            value = settings.alertUsageThresholdPercent.toFloat(),
-                            onValueChange = { viewModel.updateUsageAlertThreshold(it.roundToInt()) },
-                            valueRange = 50f..100f,
-                            steps = 9
-                        )
-
-                        var balanceAlertText by remember(settings.alertBalanceThresholdUsd) {
-                            mutableStateOf("%.2f".format(settings.alertBalanceThresholdUsd))
-                        }
-                        OutlinedTextField(
-                            value = balanceAlertText,
-                            onValueChange = { text ->
-                                balanceAlertText = text
-                                text.toDoubleOrNull()?.let { viewModel.updateBalanceAlert(it) }
-                            },
-                            label = { Text("Alert when spend exceeds (USD)") },
-                            prefix = { Text("$") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                    }
-                }
-            }
-
-            // Widget appearance
-            SectionCard(title = "Widget Appearance") {
                 Text(
                     text = "Widget Transparency: ${settings.widgetTransparencyPercent}%",
                     style = MaterialTheme.typography.bodyMedium
@@ -281,7 +270,72 @@ fun SettingsScreen(
                 }
             }
 
-            // Save button
+            // ── Section 4: Alerts ─────────────────────────────────────────────
+            SectionCard(title = "Alerts") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Enable Alerts",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Switch(
+                        checked = settings.alertsEnabled,
+                        onCheckedChange = { viewModel.updateAlertsEnabled(it) }
+                    )
+                }
+
+                AnimatedVisibility(visible = settings.alertsEnabled) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Session usage alert
+                        Text(
+                            text = "Session usage alert: ${settings.alertSessionThresholdPercent}%",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = settings.alertSessionThresholdPercent.toFloat(),
+                            onValueChange = { viewModel.updateSessionAlertThreshold(it.roundToInt()) },
+                            valueRange = 50f..100f,
+                            steps = 9
+                        )
+
+                        // Weekly usage alert
+                        Text(
+                            text = "Weekly usage alert: ${settings.alertWeeklyThresholdPercent}%",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = settings.alertWeeklyThresholdPercent.toFloat(),
+                            onValueChange = { viewModel.updateWeeklyAlertThreshold(it.roundToInt()) },
+                            valueRange = 50f..100f,
+                            steps = 9
+                        )
+
+                        // Balance alert
+                        var balanceAlertText by remember(settings.alertBalanceThresholdUsd) {
+                            mutableStateOf("%.2f".format(settings.alertBalanceThresholdUsd))
+                        }
+                        OutlinedTextField(
+                            value = balanceAlertText,
+                            onValueChange = { text ->
+                                balanceAlertText = text
+                                text.toDoubleOrNull()?.let { viewModel.updateBalanceAlert(it) }
+                            },
+                            label = { Text("Alert when balance falls below (USD)") },
+                            prefix = { Text("$") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+
+            // ── Save button ───────────────────────────────────────────────────
             Button(
                 onClick = { viewModel.saveSettings() },
                 modifier = Modifier.fillMaxWidth(),
@@ -307,18 +361,19 @@ fun SettingsScreen(
     }
 }
 
-@Composable
-fun UsageSummaryCard(uiState: SettingsUiState) {
-    val cached = uiState.cachedUsage
-    val settings = uiState.settings
-    val budgetPercent = if (settings.monthlyBudgetUsd > 0) {
-        ((cached.estimatedCostUsd / settings.monthlyBudgetUsd) * 100)
-            .roundToInt()
-            .coerceIn(0, 100)
-    } else 0
+// ─── Summary cards ────────────────────────────────────────────────────────────
 
-    val lastUpdated = remember(cached.fetchedAtMs) {
-        SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(cached.fetchedAtMs))
+@Composable
+fun UsageSummaryCard(usage: ClaudeUsageData) {
+    if (usage.fetchedAtMs == 0L && usage.lastError.isEmpty()) return
+
+    if (usage.lastError.isNotEmpty()) {
+        ErrorCard(title = "Claude.ai Sync Error", error = usage.lastError)
+        return
+    }
+
+    val lastUpdated = remember(usage.fetchedAtMs) {
+        SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(usage.fetchedAtMs))
     }
 
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
@@ -328,7 +383,7 @@ fun UsageSummaryCard(uiState: SettingsUiState) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "This Month's Usage",
+                    text = "Claude.ai Usage",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
@@ -340,67 +395,67 @@ fun UsageSummaryCard(uiState: SettingsUiState) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Session
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = "\$${"%.2f".format(cached.estimatedCostUsd)}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = when {
-                            budgetPercent >= 90 -> MaterialTheme.colorScheme.error
-                            budgetPercent >= 70 -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.primary
-                        }
-                    )
-                    Text(
-                        text = "of \$${"%.0f".format(settings.monthlyBudgetUsd)} budget",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 Text(
-                    text = "$budgetPercent%",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "Session",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "${usage.sessionPercent}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = usageColor(usage.sessionPercent)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { usage.sessionPercent / 100f },
+                modifier = Modifier.fillMaxWidth().height(6.dp),
+                color = usageColor(usage.sessionPercent)
+            )
+            if (usage.sessionResetAtMs > 0) {
+                Text(
+                    text = formatResetTime(usage.sessionResetAtMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
+            // Weekly
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Weekly (All Models)",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "${usage.weeklyPercent}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = usageColor(usage.weeklyPercent)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             LinearProgressIndicator(
-                progress = { budgetPercent / 100f },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp),
-                color = when {
-                    budgetPercent >= 90 -> MaterialTheme.colorScheme.error
-                    budgetPercent >= 70 -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.primary
-                }
+                progress = { usage.weeklyPercent / 100f },
+                modifier = Modifier.fillMaxWidth().height(6.dp),
+                color = usageColor(usage.weeklyPercent)
             )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(modifier = Modifier.fillMaxWidth()) {
-                UsageStat(
-                    label = "Input tokens",
-                    value = formatTokensM(cached.totalInputTokens),
-                    modifier = Modifier.weight(1f)
-                )
-                UsageStat(
-                    label = "Output tokens",
-                    value = formatTokensM(cached.totalOutputTokens),
-                    modifier = Modifier.weight(1f)
-                )
-                UsageStat(
-                    label = "Period",
-                    value = if (cached.periodStart.isNotEmpty())
-                        "${cached.periodStart.takeLast(5)} – ${cached.periodEnd.takeLast(5)}"
-                    else "--",
-                    modifier = Modifier.weight(1f)
+            if (usage.weeklyResetAtMs > 0) {
+                Text(
+                    text = formatResetTime(usage.weeklyResetAtMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
@@ -408,22 +463,72 @@ fun UsageSummaryCard(uiState: SettingsUiState) {
 }
 
 @Composable
-fun UsageStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium
-        )
+fun BalanceSummaryCard(balance: ApiBalance) {
+    if (balance.fetchedAtMs == 0L && balance.lastError.isEmpty()) return
+
+    if (balance.lastError.isNotEmpty()) {
+        ErrorCard(title = "Balance Sync Error", error = balance.lastError)
+        return
+    }
+
+    val lastUpdated = remember(balance.fetchedAtMs) {
+        SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(balance.fetchedAtMs))
+    }
+
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "API Balance",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "Updated $lastUpdated",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Remaining Balance",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "\$${"%.2f".format(balance.remainingUsd)}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = when {
+                            balance.remainingUsd < 1.0 -> MaterialTheme.colorScheme.error
+                            balance.remainingUsd < 5.0 -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Pending this period",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "\$${"%.2f".format(balance.pendingUsd)}",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun ErrorCard(error: String) {
+fun ErrorCard(title: String, error: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -432,7 +537,7 @@ fun ErrorCard(error: String) {
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "Sync Error",
+                text = title,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
@@ -463,8 +568,11 @@ fun SectionCard(
     }
 }
 
-private fun formatTokensM(tokens: Long): String = when {
-    tokens >= 1_000_000 -> "${"%.2f".format(tokens / 1_000_000.0)}M"
-    tokens >= 1_000 -> "${"%.1f".format(tokens / 1_000.0)}K"
-    else -> tokens.toString()
+// ─── Colour helpers ───────────────────────────────────────────────────────────
+
+@Composable
+private fun usageColor(percent: Int) = when {
+    percent >= 90 -> MaterialTheme.colorScheme.error
+    percent >= 70 -> MaterialTheme.colorScheme.tertiary
+    else -> MaterialTheme.colorScheme.primary
 }

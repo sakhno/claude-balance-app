@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.anthropic.balanceapp.api.models.ApiBalance
+import com.anthropic.balanceapp.api.models.ClaudeUsageData
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -13,24 +15,15 @@ import java.io.IOException
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "balance_app_settings")
 
 data class AppSettings(
-    val apiKey: String = "",
+    val claudeSessionToken: String = "",
+    val anthropicApiKey: String = "",
     val updateIntervalMinutes: Int = 60,
-    val monthlyBudgetUsd: Double = 50.0,
-    val alertUsageThresholdPercent: Int = 80,
-    val alertBalanceThresholdUsd: Double = 40.0,
+    val alertSessionThresholdPercent: Int = 80,
+    val alertWeeklyThresholdPercent: Int = 80,
+    val alertBalanceThresholdUsd: Double = 1.0,
     val widgetTransparencyPercent: Int = 10,
     val widgetTheme: WidgetTheme = WidgetTheme.AUTO,
     val alertsEnabled: Boolean = true
-)
-
-data class CachedUsageData(
-    val totalInputTokens: Long = 0L,
-    val totalOutputTokens: Long = 0L,
-    val estimatedCostUsd: Double = 0.0,
-    val periodStart: String = "",
-    val periodEnd: String = "",
-    val fetchedAtMs: Long = 0L,
-    val lastError: String = ""
 )
 
 enum class WidgetTheme(val value: String) {
@@ -46,23 +39,32 @@ enum class WidgetTheme(val value: String) {
 class AppDataStore(private val context: Context) {
 
     companion object {
-        val API_KEY = stringPreferencesKey("api_key")
+        // Credentials
+        val CLAUDE_SESSION_TOKEN = stringPreferencesKey("claude_session_token")
+        val ANTHROPIC_API_KEY = stringPreferencesKey("anthropic_api_key")
+
+        // Widget & sync settings
         val UPDATE_INTERVAL_MINUTES = intPreferencesKey("update_interval_minutes")
-        val MONTHLY_BUDGET_USD = doublePreferencesKey("monthly_budget_usd")
-        val ALERT_USAGE_THRESHOLD = intPreferencesKey("alert_usage_threshold")
+        val ALERT_SESSION_THRESHOLD = intPreferencesKey("alert_session_threshold")
+        val ALERT_WEEKLY_THRESHOLD = intPreferencesKey("alert_weekly_threshold")
         val ALERT_BALANCE_THRESHOLD = doublePreferencesKey("alert_balance_threshold")
         val WIDGET_TRANSPARENCY = intPreferencesKey("widget_transparency")
         val WIDGET_THEME = stringPreferencesKey("widget_theme")
         val ALERTS_ENABLED = booleanPreferencesKey("alerts_enabled")
 
-        // Cached data keys
-        val CACHED_INPUT_TOKENS = longPreferencesKey("cached_input_tokens")
-        val CACHED_OUTPUT_TOKENS = longPreferencesKey("cached_output_tokens")
-        val CACHED_COST_USD = doublePreferencesKey("cached_cost_usd")
-        val CACHED_PERIOD_START = stringPreferencesKey("cached_period_start")
-        val CACHED_PERIOD_END = stringPreferencesKey("cached_period_end")
-        val CACHED_FETCHED_AT_MS = longPreferencesKey("cached_fetched_at_ms")
-        val CACHED_LAST_ERROR = stringPreferencesKey("cached_last_error")
+        // Cached ClaudeUsageData
+        val CLAUDE_SESSION_PERCENT = intPreferencesKey("claude_session_percent")
+        val CLAUDE_SESSION_RESET_AT_MS = longPreferencesKey("claude_session_reset_at_ms")
+        val CLAUDE_WEEKLY_PERCENT = intPreferencesKey("claude_weekly_percent")
+        val CLAUDE_WEEKLY_RESET_AT_MS = longPreferencesKey("claude_weekly_reset_at_ms")
+        val CLAUDE_FETCHED_AT_MS = longPreferencesKey("claude_fetched_at_ms")
+        val CLAUDE_LAST_ERROR = stringPreferencesKey("claude_last_error")
+
+        // Cached ApiBalance
+        val BALANCE_REMAINING_USD = doublePreferencesKey("balance_remaining_usd")
+        val BALANCE_PENDING_USD = doublePreferencesKey("balance_pending_usd")
+        val BALANCE_FETCHED_AT_MS = longPreferencesKey("balance_fetched_at_ms")
+        val BALANCE_LAST_ERROR = stringPreferencesKey("balance_last_error")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data
@@ -72,40 +74,55 @@ class AppDataStore(private val context: Context) {
         }
         .map { prefs ->
             AppSettings(
-                apiKey = prefs[API_KEY] ?: "",
+                claudeSessionToken = prefs[CLAUDE_SESSION_TOKEN] ?: "",
+                anthropicApiKey = prefs[ANTHROPIC_API_KEY] ?: "",
                 updateIntervalMinutes = prefs[UPDATE_INTERVAL_MINUTES] ?: 60,
-                monthlyBudgetUsd = prefs[MONTHLY_BUDGET_USD] ?: 50.0,
-                alertUsageThresholdPercent = prefs[ALERT_USAGE_THRESHOLD] ?: 80,
-                alertBalanceThresholdUsd = prefs[ALERT_BALANCE_THRESHOLD] ?: 40.0,
+                alertSessionThresholdPercent = prefs[ALERT_SESSION_THRESHOLD] ?: 80,
+                alertWeeklyThresholdPercent = prefs[ALERT_WEEKLY_THRESHOLD] ?: 80,
+                alertBalanceThresholdUsd = prefs[ALERT_BALANCE_THRESHOLD] ?: 1.0,
                 widgetTransparencyPercent = prefs[WIDGET_TRANSPARENCY] ?: 10,
                 widgetTheme = WidgetTheme.fromValue(prefs[WIDGET_THEME] ?: "auto"),
                 alertsEnabled = prefs[ALERTS_ENABLED] ?: true
             )
         }
 
-    val cachedUsageFlow: Flow<CachedUsageData> = context.dataStore.data
+    val claudeUsageFlow: Flow<ClaudeUsageData> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) emit(emptyPreferences())
             else throw exception
         }
         .map { prefs ->
-            CachedUsageData(
-                totalInputTokens = prefs[CACHED_INPUT_TOKENS] ?: 0L,
-                totalOutputTokens = prefs[CACHED_OUTPUT_TOKENS] ?: 0L,
-                estimatedCostUsd = prefs[CACHED_COST_USD] ?: 0.0,
-                periodStart = prefs[CACHED_PERIOD_START] ?: "",
-                periodEnd = prefs[CACHED_PERIOD_END] ?: "",
-                fetchedAtMs = prefs[CACHED_FETCHED_AT_MS] ?: 0L,
-                lastError = prefs[CACHED_LAST_ERROR] ?: ""
+            ClaudeUsageData(
+                sessionPercent = prefs[CLAUDE_SESSION_PERCENT] ?: 0,
+                sessionResetAtMs = prefs[CLAUDE_SESSION_RESET_AT_MS] ?: 0L,
+                weeklyPercent = prefs[CLAUDE_WEEKLY_PERCENT] ?: 0,
+                weeklyResetAtMs = prefs[CLAUDE_WEEKLY_RESET_AT_MS] ?: 0L,
+                fetchedAtMs = prefs[CLAUDE_FETCHED_AT_MS] ?: 0L,
+                lastError = prefs[CLAUDE_LAST_ERROR] ?: ""
+            )
+        }
+
+    val apiBalanceFlow: Flow<ApiBalance> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }
+        .map { prefs ->
+            ApiBalance(
+                remainingUsd = prefs[BALANCE_REMAINING_USD] ?: 0.0,
+                pendingUsd = prefs[BALANCE_PENDING_USD] ?: 0.0,
+                fetchedAtMs = prefs[BALANCE_FETCHED_AT_MS] ?: 0L,
+                lastError = prefs[BALANCE_LAST_ERROR] ?: ""
             )
         }
 
     suspend fun saveSettings(settings: AppSettings) {
         context.dataStore.edit { prefs ->
-            prefs[API_KEY] = settings.apiKey
+            prefs[CLAUDE_SESSION_TOKEN] = settings.claudeSessionToken
+            prefs[ANTHROPIC_API_KEY] = settings.anthropicApiKey
             prefs[UPDATE_INTERVAL_MINUTES] = settings.updateIntervalMinutes
-            prefs[MONTHLY_BUDGET_USD] = settings.monthlyBudgetUsd
-            prefs[ALERT_USAGE_THRESHOLD] = settings.alertUsageThresholdPercent
+            prefs[ALERT_SESSION_THRESHOLD] = settings.alertSessionThresholdPercent
+            prefs[ALERT_WEEKLY_THRESHOLD] = settings.alertWeeklyThresholdPercent
             prefs[ALERT_BALANCE_THRESHOLD] = settings.alertBalanceThresholdUsd
             prefs[WIDGET_TRANSPARENCY] = settings.widgetTransparencyPercent
             prefs[WIDGET_THEME] = settings.widgetTheme.value
@@ -113,39 +130,43 @@ class AppDataStore(private val context: Context) {
         }
     }
 
-    suspend fun saveCachedUsage(
-        inputTokens: Long,
-        outputTokens: Long,
-        costUsd: Double,
-        periodStart: String,
-        periodEnd: String
-    ) {
+    suspend fun saveClaudeUsage(data: ClaudeUsageData) {
         context.dataStore.edit { prefs ->
-            prefs[CACHED_INPUT_TOKENS] = inputTokens
-            prefs[CACHED_OUTPUT_TOKENS] = outputTokens
-            prefs[CACHED_COST_USD] = costUsd
-            prefs[CACHED_PERIOD_START] = periodStart
-            prefs[CACHED_PERIOD_END] = periodEnd
-            prefs[CACHED_FETCHED_AT_MS] = System.currentTimeMillis()
-            prefs[CACHED_LAST_ERROR] = ""
+            prefs[CLAUDE_SESSION_PERCENT] = data.sessionPercent
+            prefs[CLAUDE_SESSION_RESET_AT_MS] = data.sessionResetAtMs
+            prefs[CLAUDE_WEEKLY_PERCENT] = data.weeklyPercent
+            prefs[CLAUDE_WEEKLY_RESET_AT_MS] = data.weeklyResetAtMs
+            prefs[CLAUDE_FETCHED_AT_MS] = System.currentTimeMillis()
+            prefs[CLAUDE_LAST_ERROR] = ""
         }
     }
 
-    suspend fun saveCacheError(errorMessage: String) {
+    suspend fun saveClaudeUsageError(errorMessage: String) {
         context.dataStore.edit { prefs ->
-            prefs[CACHED_LAST_ERROR] = errorMessage
-            prefs[CACHED_FETCHED_AT_MS] = System.currentTimeMillis()
+            prefs[CLAUDE_LAST_ERROR] = errorMessage
+            prefs[CLAUDE_FETCHED_AT_MS] = System.currentTimeMillis()
         }
     }
 
-    suspend fun getApiKey(): String {
-        return context.dataStore.data
-            .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
-            .map { it[API_KEY] ?: "" }
-            .first()
+    suspend fun saveApiBalance(data: ApiBalance) {
+        context.dataStore.edit { prefs ->
+            prefs[BALANCE_REMAINING_USD] = data.remainingUsd
+            prefs[BALANCE_PENDING_USD] = data.pendingUsd
+            prefs[BALANCE_FETCHED_AT_MS] = System.currentTimeMillis()
+            prefs[BALANCE_LAST_ERROR] = ""
+        }
     }
 
-    suspend fun getSettings(): AppSettings {
-        return settingsFlow.first()
+    suspend fun saveApiBalanceError(errorMessage: String) {
+        context.dataStore.edit { prefs ->
+            prefs[BALANCE_LAST_ERROR] = errorMessage
+            prefs[BALANCE_FETCHED_AT_MS] = System.currentTimeMillis()
+        }
     }
+
+    suspend fun getSettings(): AppSettings = settingsFlow.first()
+
+    suspend fun getClaudeUsage(): ClaudeUsageData = claudeUsageFlow.first()
+
+    suspend fun getApiBalance(): ApiBalance = apiBalanceFlow.first()
 }

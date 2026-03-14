@@ -28,7 +28,9 @@ class BalanceApplication : Application(), Configuration.Provider {
         applicationScope.launch {
             val dataStore = AppDataStore(this@BalanceApplication)
             val settings = dataStore.settingsFlow.first()
-            if (settings.apiKey.isNotBlank()) {
+            val hasCredentials = settings.claudeSessionToken.isNotBlank() ||
+                                 settings.anthropicApiKey.isNotBlank()
+            if (hasCredentials) {
                 SyncWorker.schedule(this@BalanceApplication, settings.updateIntervalMinutes)
             }
         }

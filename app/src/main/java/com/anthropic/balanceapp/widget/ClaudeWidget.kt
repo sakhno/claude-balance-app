@@ -21,13 +21,12 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.*
 import androidx.glance.text.*
+import com.anthropic.balanceapp.api.formatResetTime
+import com.anthropic.balanceapp.api.models.ApiBalance
+import com.anthropic.balanceapp.api.models.ClaudeUsageData
 import com.anthropic.balanceapp.data.AppDataStore
 import com.anthropic.balanceapp.data.AppSettings
-import com.anthropic.balanceapp.data.CachedUsageData
 import com.anthropic.balanceapp.worker.SyncWorker
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
-import kotlin.math.roundToInt
 
 class ClaudeWidget : GlanceAppWidget() {
 
@@ -47,10 +46,11 @@ class ClaudeWidget : GlanceAppWidget() {
 
         provideContent {
             val settings by dataStore.settingsFlow.collectAsState(initial = AppSettings())
-            val cached by dataStore.cachedUsageFlow.collectAsState(initial = CachedUsageData())
+            val usage by dataStore.claudeUsageFlow.collectAsState(initial = ClaudeUsageData())
+            val balance by dataStore.apiBalanceFlow.collectAsState(initial = ApiBalance())
             val size = LocalSize.current
 
-            WidgetContent(settings = settings, cached = cached, size = size)
+            WidgetContent(settings = settings, usage = usage, balance = balance, size = size)
         }
     }
 }
@@ -58,24 +58,13 @@ class ClaudeWidget : GlanceAppWidget() {
 @Composable
 fun WidgetContent(
     settings: AppSettings,
-    cached: CachedUsageData,
+    usage: ClaudeUsageData,
+    balance: ApiBalance,
     size: DpSize
 ) {
-    val budgetPercent = if (settings.monthlyBudgetUsd > 0 && cached.fetchedAtMs > 0) {
-        ((cached.estimatedCostUsd / settings.monthlyBudgetUsd) * 100)
-            .roundToInt()
-            .coerceIn(0, 100)
-    } else 0
-
-    val daysUntilReset = run {
-        val today = LocalDate.now()
-        val endOfMonth = today.withDayOfMonth(today.lengthOfMonth())
-        ChronoUnit.DAYS.between(today, endOfMonth).toInt() + 1
-    }
-
     val isSmall = size.width < 200.dp
-    val isLarge = size.width >= 280.dp && size.height >= 140.dp
     val isExtraLarge = size.width >= 350.dp && size.height >= 200.dp
+    val isLarge = size.width >= 280.dp && size.height >= 140.dp
 
     GlanceTheme {
         Box(
@@ -87,133 +76,35 @@ fun WidgetContent(
                 .padding(if (isSmall) 10.dp else 14.dp)
         ) {
             when {
-                isSmall -> SmallWidgetLayout(
-                    budgetPercent = budgetPercent,
-                    costUsd = cached.estimatedCostUsd,
-                    daysUntilReset = daysUntilReset,
-                    hasData = cached.fetchedAtMs > 0
-                )
-                isExtraLarge -> ExtraLargeWidgetLayout(
-                    settings = settings,
-                    cached = cached,
-                    budgetPercent = budgetPercent,
-                    daysUntilReset = daysUntilReset
-                )
-                isLarge -> LargeWidgetLayout(
-                    settings = settings,
-                    cached = cached,
-                    budgetPercent = budgetPercent,
-                    daysUntilReset = daysUntilReset
-                )
-                else -> MediumWidgetLayout(
-                    budgetPercent = budgetPercent,
-                    costUsd = cached.estimatedCostUsd,
-                    budget = settings.monthlyBudgetUsd,
-                    daysUntilReset = daysUntilReset,
-                    hasData = cached.fetchedAtMs > 0,
-                    lastError = cached.lastError
-                )
+                isSmall -> SmallWidgetLayout(balance = balance)
+                isExtraLarge -> ExtraLargeWidgetLayout(usage = usage, balance = balance)
+                isLarge -> LargeWidgetLayout(usage = usage, balance = balance)
+                else -> MediumWidgetLayout(usage = usage, balance = balance)
             }
         }
     }
 }
 
+// ─── Small (2×1): just the remaining balance ─────────────────────────────────
+
 @Composable
-fun SmallWidgetLayout(budgetPercent: Int, costUsd: Double, daysUntilReset: Int, hasData: Boolean) {
+fun SmallWidgetLayout(balance: ApiBalance) {
+    val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     Column(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = if (hasData) "$budgetPercent%" else "--",
+            text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
             style = TextStyle(
-                color = progressColorProvider(budgetPercent),
+                color = balanceColorProvider(balance.remainingUsd, hasBalance),
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
         )
         Text(
-            text = if (hasData) "\$${"%.2f".format(costUsd)}" else "No data",
-            style = TextStyle(
-                color = GlanceTheme.colors.secondary,
-                fontSize = 13.sp
-            )
-        )
-        if (hasData) {
-            Text(
-                text = "${daysUntilReset}d left",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 12.sp
-                )
-            )
-        }
-    }
-}
-
-@Composable
-fun MediumWidgetLayout(
-    budgetPercent: Int,
-    costUsd: Double,
-    budget: Double,
-    daysUntilReset: Int,
-    hasData: Boolean,
-    lastError: String
-) {
-    Column(
-        modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = GlanceModifier.defaultWeight()) {
-                Text(
-                    text = "Anthropic API",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.onSurface,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                )
-                Text(
-                    text = when {
-                        hasData -> "$budgetPercent% used"
-                        lastError.isNotEmpty() -> "Sync error"
-                        else -> "Loading..."
-                    },
-                    style = TextStyle(
-                        color = if (hasData) progressColorProvider(budgetPercent) else GlanceTheme.colors.secondary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = if (hasData) "\$${"%.2f".format(costUsd)}" else "--",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.onSurface,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Text(
-                    text = "of \$${"%.0f".format(budget)}",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.secondary,
-                        fontSize = 13.sp
-                    )
-                )
-            }
-        }
-        Spacer(modifier = GlanceModifier.height(6.dp))
-        WidgetProgressBar(percent = budgetPercent)
-        Spacer(modifier = GlanceModifier.height(5.dp))
-        Text(
-            text = "Resets in $daysUntilReset days · incl. Claude Code",
+            text = "remaining",
             style = TextStyle(
                 color = GlanceTheme.colors.secondary,
                 fontSize = 12.sp
@@ -222,21 +113,48 @@ fun MediumWidgetLayout(
     }
 }
 
+// ─── Medium (3×2) ─────────────────────────────────────────────────────────────
+
 @Composable
-fun LargeWidgetLayout(
-    settings: AppSettings,
-    cached: CachedUsageData,
-    budgetPercent: Int,
-    daysUntilReset: Int
-) {
-    val hasData = cached.fetchedAtMs > 0
-    Column(modifier = GlanceModifier.fillMaxSize()) {
+fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+    val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
+    val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
+
+    Column(
+        modifier = GlanceModifier.fillMaxSize(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Session row
+        UsageRow(
+            label = "Session",
+            percent = if (hasUsage) usage.sessionPercent else null,
+            resetAtMs = usage.sessionResetAtMs
+        )
+        Spacer(modifier = GlanceModifier.height(4.dp))
+
+        // Weekly row
+        UsageRow(
+            label = "Weekly ",
+            percent = if (hasUsage) usage.weeklyPercent else null,
+            resetAtMs = usage.weeklyResetAtMs
+        )
+        Spacer(modifier = GlanceModifier.height(6.dp))
+
+        // Balance row
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Anthropic API (+ Claude Code)",
+                text = "Balance",
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = 13.sp
+                ),
+                modifier = GlanceModifier.width(52.dp)
+            )
+            Text(
+                text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)} remaining" else "--",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
                     fontSize = 13.sp,
@@ -245,7 +163,41 @@ fun LargeWidgetLayout(
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
-                text = if (hasData) formatRelativeTime(cached.fetchedAtMs) else "",
+                text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)} pending" else "",
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = 12.sp
+                )
+            )
+        }
+    }
+}
+
+// ─── Large (4×2) ─────────────────────────────────────────────────────────────
+
+@Composable
+fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+    val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
+    val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
+    val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
+
+    Column(modifier = GlanceModifier.fillMaxSize()) {
+        // Header
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Claude Usage",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Text(
+                text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
                 style = TextStyle(
                     color = GlanceTheme.colors.secondary,
                     fontSize = 12.sp
@@ -254,64 +206,85 @@ fun LargeWidgetLayout(
         }
         Spacer(modifier = GlanceModifier.height(8.dp))
 
-        Text(
-            text = if (hasData) "$budgetPercent%" else "--",
-            style = TextStyle(
-                color = progressColorProvider(budgetPercent),
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold
-            )
+        // Session row with inline bar
+        LargeUsageRow(
+            label = "Session",
+            percent = if (hasUsage) usage.sessionPercent else null,
+            resetAtMs = usage.sessionResetAtMs
         )
-        Text(
-            text = "of monthly budget used",
-            style = TextStyle(
-                color = GlanceTheme.colors.secondary,
-                fontSize = 12.sp
-            )
+        Spacer(modifier = GlanceModifier.height(6.dp))
+
+        // Weekly row with inline bar
+        LargeUsageRow(
+            label = "Weekly ",
+            percent = if (hasUsage) usage.weeklyPercent else null,
+            resetAtMs = usage.weeklyResetAtMs
         )
-        Spacer(modifier = GlanceModifier.height(8.dp))
-        WidgetProgressBar(percent = budgetPercent)
         Spacer(modifier = GlanceModifier.height(10.dp))
 
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            WidgetStatCell(
-                label = "Spent",
-                value = if (hasData) "\$${"%.2f".format(cached.estimatedCostUsd)}" else "--",
-                modifier = GlanceModifier.defaultWeight()
-            )
-            WidgetStatCell(
-                label = "Budget",
-                value = "\$${"%.0f".format(settings.monthlyBudgetUsd)}",
-                modifier = GlanceModifier.defaultWeight()
-            )
-            WidgetStatCell(
-                label = "Resets",
-                value = "${daysUntilReset}d",
-                modifier = GlanceModifier.defaultWeight()
-            )
-        }
-    }
-}
-
-@Composable
-fun ExtraLargeWidgetLayout(
-    settings: AppSettings,
-    cached: CachedUsageData,
-    budgetPercent: Int,
-    daysUntilReset: Int
-) {
-    val hasData = cached.fetchedAtMs > 0
-    val totalTokensM = if (hasData) {
-        (cached.totalInputTokens + cached.totalOutputTokens) / 1_000_000.0
-    } else 0.0
-
-    Column(modifier = GlanceModifier.fillMaxSize()) {
+        // Balance section
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Anthropic API · incl. Claude Code",
+                text = "Remaining Balance",
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = 13.sp
+                ),
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Text(
+                text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(4.dp))
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Pending this period",
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = 13.sp
+                ),
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Text(
+                text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)}" else "--",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+    }
+}
+
+// ─── Extra Large (4×3): same as Large but more spacing & bigger text ──────────
+
+@Composable
+fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+    val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
+    val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
+    val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
+
+    Column(modifier = GlanceModifier.fillMaxSize()) {
+        // Header
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Claude Usage",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
                     fontSize = 14.sp,
@@ -320,85 +293,87 @@ fun ExtraLargeWidgetLayout(
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
-                text = if (hasData) formatRelativeTime(cached.fetchedAtMs) else "No data",
+                text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
                 style = TextStyle(
                     color = GlanceTheme.colors.secondary,
                     fontSize = 12.sp
                 )
             )
         }
-        Spacer(modifier = GlanceModifier.height(10.dp))
-
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Column(modifier = GlanceModifier.defaultWeight()) {
-                Text(
-                    text = if (hasData) "$budgetPercent%" else "--",
-                    style = TextStyle(
-                        color = progressColorProvider(budgetPercent),
-                        fontSize = 40.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Text(
-                    text = "budget used",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.secondary,
-                        fontSize = 13.sp
-                    )
-                )
-            }
-            Column(
-                modifier = GlanceModifier.defaultWeight(),
-                horizontalAlignment = Alignment.End
-            ) {
-                Text(
-                    text = if (hasData) "\$${"%.2f".format(cached.estimatedCostUsd)}" else "--",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.onSurface,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Text(
-                    text = "of \$${"%.0f".format(settings.monthlyBudgetUsd)} budget",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.secondary,
-                        fontSize = 13.sp
-                    )
-                )
-            }
-        }
-        Spacer(modifier = GlanceModifier.height(10.dp))
-        WidgetProgressBar(percent = budgetPercent)
         Spacer(modifier = GlanceModifier.height(12.dp))
 
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            WidgetStatCell(
-                label = "Input",
-                value = if (hasData) formatWidgetTokens(cached.totalInputTokens) else "--",
+        // Session row
+        LargeUsageRow(
+            label = "Session",
+            percent = if (hasUsage) usage.sessionPercent else null,
+            resetAtMs = usage.sessionResetAtMs,
+            bigText = true
+        )
+        Spacer(modifier = GlanceModifier.height(10.dp))
+
+        // Weekly row
+        LargeUsageRow(
+            label = "Weekly ",
+            percent = if (hasUsage) usage.weeklyPercent else null,
+            resetAtMs = usage.weeklyResetAtMs,
+            bigText = true
+        )
+        Spacer(modifier = GlanceModifier.height(16.dp))
+
+        // Balance section
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Remaining Balance",
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = 14.sp
+                ),
                 modifier = GlanceModifier.defaultWeight()
             )
-            WidgetStatCell(
-                label = "Output",
-                value = if (hasData) formatWidgetTokens(cached.totalOutputTokens) else "--",
+            Text(
+                text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(8.dp))
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Pending this period",
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = 14.sp
+                ),
                 modifier = GlanceModifier.defaultWeight()
             )
-            WidgetStatCell(
-                label = "Total",
-                value = if (hasData) "${"%.2f".format(totalTokensM)}M" else "--",
-                modifier = GlanceModifier.defaultWeight()
-            )
-            WidgetStatCell(
-                label = "Resets",
-                value = "${daysUntilReset}d",
-                modifier = GlanceModifier.defaultWeight()
+            Text(
+                text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)}" else "--",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
             )
         }
 
-        if (cached.lastError.isNotEmpty()) {
-            Spacer(modifier = GlanceModifier.height(6.dp))
+        // Error hints
+        val combinedError = listOfNotNull(
+            usage.lastError.takeIf { it.isNotEmpty() },
+            balance.lastError.takeIf { it.isNotEmpty() }
+        ).joinToString(" | ")
+        if (combinedError.isNotEmpty()) {
+            Spacer(modifier = GlanceModifier.height(8.dp))
             Text(
-                text = "⚠ ${cached.lastError.take(80)}",
+                text = combinedError.take(100),
                 style = TextStyle(
                     color = ColorProvider(Color(0xFFE57373)),
                     fontSize = 11.sp
@@ -408,15 +383,157 @@ fun ExtraLargeWidgetLayout(
     }
 }
 
+// ─── Shared composable rows ───────────────────────────────────────────────────
+
+/**
+ * Compact row for the medium widget:
+ * "Session  11%  ████░░░░░░  Resets in 3h 51m"
+ */
 @Composable
-fun WidgetProgressBar(percent: Int) {
+fun UsageRow(label: String, percent: Int?, resetAtMs: Long) {
+    val pct = percent ?: 0
+    val displayPct = if (percent != null) "$pct%" else "--"
+    val resetText = if (resetAtMs > 0) formatResetTime(resetAtMs) else ""
+
+    Row(
+        modifier = GlanceModifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = TextStyle(
+                color = GlanceTheme.colors.secondary,
+                fontSize = 13.sp
+            ),
+            modifier = GlanceModifier.width(52.dp)
+        )
+        Text(
+            text = displayPct,
+            style = TextStyle(
+                color = if (percent != null) progressColorProvider(pct)
+                else GlanceTheme.colors.secondary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            modifier = GlanceModifier.width(30.dp)
+        )
+        Spacer(modifier = GlanceModifier.width(4.dp))
+        CompactProgressBar(
+            percent = pct,
+            modifier = GlanceModifier.defaultWeight().height(6.dp)
+        )
+        Spacer(modifier = GlanceModifier.width(4.dp))
+        Text(
+            text = resetText,
+            style = TextStyle(
+                color = GlanceTheme.colors.secondary,
+                fontSize = 11.sp
+            )
+        )
+    }
+}
+
+/**
+ * Row for the large widget with a full-width bar underneath:
+ * "Session  ████░░░░░░░░░░░░  11%    Resets in 3 hr 51 min"
+ */
+@Composable
+fun LargeUsageRow(
+    label: String,
+    percent: Int?,
+    resetAtMs: Long,
+    bigText: Boolean = false
+) {
+    val pct = percent ?: 0
+    val displayPct = if (percent != null) "$pct%" else "--"
+    val resetText = if (resetAtMs > 0) formatResetTime(resetAtMs) else ""
+    val labelSize = if (bigText) 14.sp else 13.sp
+    val valueSize = if (bigText) 16.sp else 13.sp
+
+    Column(modifier = GlanceModifier.fillMaxWidth()) {
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = labelSize
+                ),
+                modifier = GlanceModifier.width(56.dp)
+            )
+            CompactProgressBar(
+                percent = pct,
+                modifier = GlanceModifier.defaultWeight().height(if (bigText) 10.dp else 8.dp)
+            )
+            Spacer(modifier = GlanceModifier.width(6.dp))
+            Text(
+                text = displayPct,
+                style = TextStyle(
+                    color = if (percent != null) progressColorProvider(pct)
+                    else GlanceTheme.colors.secondary,
+                    fontSize = valueSize,
+                    fontWeight = FontWeight.Bold
+                ),
+                modifier = GlanceModifier.width(34.dp)
+            )
+            Text(
+                text = resetText,
+                style = TextStyle(
+                    color = GlanceTheme.colors.secondary,
+                    fontSize = if (bigText) 13.sp else 11.sp
+                )
+            )
+        }
+    }
+}
+
+// ─── Progress bar ─────────────────────────────────────────────────────────────
+
+/**
+ * A two-segment progress bar that fits inside any externally-sized container.
+ * Uses integer dp widths (filled + empty = 100 dp) which scale proportionally
+ * when the parent Row stretches the child to fill available space.
+ */
+@Composable
+fun CompactProgressBar(percent: Int, modifier: GlanceModifier = GlanceModifier) {
+    val barColor = progressColorProvider(percent)
+    val clampedPercent = percent.coerceIn(0, 100)
+    val filledWeight = clampedPercent.coerceAtLeast(1)
+    val emptyWeight = (100 - clampedPercent).coerceAtLeast(1)
+
+    Row(modifier = modifier) {
+        Box(
+            modifier = GlanceModifier
+                .width(filledWeight.dp)
+                .fillMaxHeight()
+                .background(barColor)
+                .cornerRadius(4.dp)
+        ) {}
+        Box(
+            modifier = GlanceModifier
+                .width(emptyWeight.dp)
+                .fillMaxHeight()
+                .background(ColorProvider(Color(0x22888888)))
+                .cornerRadius(4.dp)
+        ) {}
+    }
+}
+
+/**
+ * Two-segment horizontal bar. Glance's Row weight system renders each box
+ * proportionally to its weight value (both segments sum to 100 units).
+ */
+@Composable
+fun WidgetProgressBar(percent: Int, modifier: GlanceModifier = GlanceModifier) {
     val barColor = progressColorProvider(percent)
     val clampedPercent = percent.coerceIn(0, 100)
     val filledWeight = clampedPercent.coerceAtLeast(1)
     val emptyWeight = (100 - clampedPercent).coerceAtLeast(1)
 
     Row(
-        modifier = GlanceModifier
+        modifier = modifier
             .fillMaxWidth()
             .height(8.dp)
     ) {
@@ -437,32 +554,22 @@ fun WidgetProgressBar(percent: Int) {
     }
 }
 
-@Composable
-fun WidgetStatCell(label: String, value: String, modifier: GlanceModifier = GlanceModifier) {
-    Column(modifier = modifier) {
-        Text(
-            text = label,
-            style = TextStyle(
-                color = GlanceTheme.colors.secondary,
-                fontSize = 11.sp
-            )
-        )
-        Text(
-            text = value,
-            style = TextStyle(
-                color = GlanceTheme.colors.onSurface,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-        )
-    }
-}
+// ─── Colour helpers ───────────────────────────────────────────────────────────
 
 fun progressColorProvider(percent: Int): ColorProvider = when {
     percent >= 90 -> ColorProvider(Color(0xFFE57373))  // red
     percent >= 70 -> ColorProvider(Color(0xFFFFB74D))  // amber
     else -> ColorProvider(Color(0xFF81C784))            // green
 }
+
+fun balanceColorProvider(remainingUsd: Double, hasData: Boolean): ColorProvider = when {
+    !hasData -> ColorProvider(Color(0xFF888888))
+    remainingUsd < 1.0 -> ColorProvider(Color(0xFFE57373))   // red – nearly empty
+    remainingUsd < 5.0 -> ColorProvider(Color(0xFFFFB74D))   // amber
+    else -> ColorProvider(Color(0xFF81C784))                  // green
+}
+
+// ─── Time helpers ─────────────────────────────────────────────────────────────
 
 fun formatRelativeTime(timestampMs: Long): String {
     val diffMs = System.currentTimeMillis() - timestampMs
@@ -475,11 +582,7 @@ fun formatRelativeTime(timestampMs: Long): String {
     }
 }
 
-fun formatWidgetTokens(tokens: Long): String = when {
-    tokens >= 1_000_000 -> "${"%.1f".format(tokens / 1_000_000.0)}M"
-    tokens >= 1_000 -> "${"%.1f".format(tokens / 1_000.0)}K"
-    else -> tokens.toString()
-}
+// ─── Action callbacks ─────────────────────────────────────────────────────────
 
 class OpenAppAction : ActionCallback {
     override suspend fun onAction(

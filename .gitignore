@@ -12,3 +12,4 @@ local.properties
 # API keys — never commit these
 *.keystore
 *.jks
+screenshots/
