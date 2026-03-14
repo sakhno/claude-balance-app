@@ -80,18 +80,28 @@ data class BillingBalanceResponse(
 @JsonClass(generateAdapter = true)
 data class BootstrapResponse(
     @Json(name = "account") val account: BootstrapAccount? = null,
-    @Json(name = "organization") val organization: BootstrapOrganization? = null
+    @Json(name = "organization") val organization: BootstrapOrganization? = null,
+    @Json(name = "active_organization") val activeOrganization: BootstrapOrganization? = null,
+    @Json(name = "memberships") val memberships: List<BootstrapMembership>? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class BootstrapAccount(
-    @Json(name = "membership_limits") val membershipLimits: MembershipLimitsResponse? = null
+    @Json(name = "membership_limits") val membershipLimits: MembershipLimitsResponse? = null,
+    @Json(name = "limits") val limits: MembershipLimitsResponse? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class BootstrapOrganization(
     @Json(name = "id") val id: String? = null,
     @Json(name = "uuid") val uuid: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class BootstrapMembership(
+    @Json(name = "organization") val organization: BootstrapOrganization? = null,
+    @Json(name = "membership_limits") val membershipLimits: MembershipLimitsResponse? = null,
+    @Json(name = "limits") val limits: MembershipLimitsResponse? = null
 )
 
 // ─── Org limits response ─────────────────────────────────────────────────────

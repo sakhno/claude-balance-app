@@ -46,6 +46,13 @@ interface ClaudeAiService {
         @Path("orgId") orgId: String
     ): Response<ResponseBody>
 
+    @GET("api/organizations/{orgId}/rate_limits")
+    suspend fun getOrgRateLimits(
+        @Header("Cookie") cookie: String,
+        @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)",
+        @Path("orgId") orgId: String
+    ): Response<ResponseBody>
+
     @GET("api/bootstrap")
     suspend fun getBootstrap(
         @Header("Cookie") cookie: String,
@@ -129,11 +136,11 @@ class ClaudeAiApiClient {
             val primaryResult = tryMembershipLimits(cookie)
             if (primaryResult != null) return ApiResult.Success(primaryResult)
 
-            // Fallback: bootstrap (extract org id, then try org limits)
-            val bootstrapResult = tryBootstrapThenOrgLimits(cookie)
+            // Fallback: bootstrap → parse embedded limits or org limits
+            val (bootstrapResult, bootstrapError) = tryBootstrapThenOrgLimits(cookie)
             if (bootstrapResult != null) return ApiResult.Success(bootstrapResult)
 
-            ApiResult.Error("Could not retrieve usage data from any Claude.ai endpoint")
+            ApiResult.Error(bootstrapError ?: "Could not retrieve usage data from any Claude.ai endpoint")
         } catch (e: java.net.UnknownHostException) {
             ApiResult.NetworkError
         } catch (e: java.net.SocketTimeoutException) {
@@ -164,33 +171,69 @@ class ClaudeAiApiClient {
         }
     }
 
-    private suspend fun tryBootstrapThenOrgLimits(cookie: String): ClaudeUsageData? {
+    /** Returns Pair(data, errorMessage). Data is non-null on success, errorMessage on failure. */
+    private suspend fun tryBootstrapThenOrgLimits(cookie: String): Pair<ClaudeUsageData?, String?> {
         return try {
             val bootstrapResponse = service.getBootstrap(cookie)
-            if (!bootstrapResponse.isSuccessful) return null
-            val bootstrapBody = bootstrapResponse.body()?.string() ?: return null
-            if (looksLikeHtml(bootstrapBody)) return null
+            if (!bootstrapResponse.isSuccessful) {
+                return Pair(null, "Bootstrap HTTP ${bootstrapResponse.code()}")
+            }
+            val bootstrapBody = bootstrapResponse.body()?.string() ?: return Pair(null, "Empty bootstrap response")
+            if (looksLikeHtml(bootstrapBody)) return Pair(null, "Session token expired or invalid")
 
             val bootstrapAdapter = moshi.adapter(BootstrapResponse::class.java)
-            val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (_: Exception) { null }
-
-            // Try embedded membership_limits from bootstrap account object
-            val embeddedLimits = bootstrap?.account?.membershipLimits
-            if (embeddedLimits != null) {
-                val parsed = buildClaudeUsageData(embeddedLimits)
-                if (parsed.sessionPercent > 0 || parsed.weeklyPercent > 0) return parsed
+            val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (e: Exception) {
+                return Pair(null, "Could not parse bootstrap response")
             }
 
-            // Try org-specific limits endpoint
-            val orgId = bootstrap?.organization?.id ?: bootstrap?.organization?.uuid ?: return null
-            val orgResponse = service.getOrgLimits(cookie, orgId = orgId)
-            if (!orgResponse.isSuccessful) return null
-            val orgBody = orgResponse.body()?.string() ?: return null
-            if (looksLikeHtml(orgBody)) return null
+            // Try embedded limits from bootstrap account object
+            val accountLimits = bootstrap?.account?.membershipLimits ?: bootstrap?.account?.limits
+            if (accountLimits != null) {
+                val parsed = buildClaudeUsageData(accountLimits)
+                if (parsed.sessionPercent > 0 || parsed.weeklyPercent > 0) return Pair(parsed, null)
+            }
 
-            parseOrgLimits(orgBody)
-        } catch (_: Exception) {
-            null
+            // Try embedded limits from memberships list
+            val membershipLimits = bootstrap?.memberships?.firstOrNull()?.let {
+                it.membershipLimits ?: it.limits
+            }
+            if (membershipLimits != null) {
+                val parsed = buildClaudeUsageData(membershipLimits)
+                if (parsed.sessionPercent > 0 || parsed.weeklyPercent > 0) return Pair(parsed, null)
+            }
+
+            // Extract org ID from multiple possible locations
+            val orgId = bootstrap?.organization?.id
+                ?: bootstrap?.organization?.uuid
+                ?: bootstrap?.activeOrganization?.id
+                ?: bootstrap?.activeOrganization?.uuid
+                ?: bootstrap?.memberships?.firstOrNull()?.organization?.id
+                ?: bootstrap?.memberships?.firstOrNull()?.organization?.uuid
+                ?: return Pair(null, "No organization ID found in bootstrap response")
+
+            // Try org limits endpoint
+            val orgResponse = service.getOrgLimits(cookie, orgId = orgId)
+            if (orgResponse.isSuccessful) {
+                val orgBody = orgResponse.body()?.string() ?: return Pair(null, "Empty org limits response")
+                if (!looksLikeHtml(orgBody)) {
+                    val result = parseOrgLimits(orgBody)
+                    if (result != null) return Pair(result, null)
+                }
+            }
+
+            // Try org rate_limits endpoint as final fallback
+            val rateResponse = service.getOrgRateLimits(cookie, orgId = orgId)
+            if (rateResponse.isSuccessful) {
+                val rateBody = rateResponse.body()?.string() ?: return Pair(null, "Empty rate limits response")
+                if (!looksLikeHtml(rateBody)) {
+                    val result = parseOrgLimits(rateBody)
+                    if (result != null) return Pair(result, null)
+                }
+            }
+
+            Pair(null, "Org limits unavailable (HTTP ${orgResponse.code()})")
+        } catch (e: Exception) {
+            Pair(null, "Unexpected error: ${e.localizedMessage}")
         }
     }
 

@@ -10,7 +10,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -51,29 +50,11 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Claude Balance") },
+                title = { Text("Settings") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                ),
-                actions = {
-                    val hasAnyCredential =
-                        settings.claudeSessionToken.isNotBlank() ||
-                        settings.anthropicApiKey.isNotBlank()
-                    IconButton(
-                        onClick = { viewModel.syncNow() },
-                        enabled = hasAnyCredential && !uiState.isSyncing
-                    ) {
-                        if (uiState.isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = "Sync now")
-                        }
-                    }
-                }
+                )
             )
         }
     ) { padding ->
@@ -85,9 +66,6 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Live data summary cards
-            UsageSummaryCard(usage = uiState.claudeUsage)
-            BalanceSummaryCard(balance = uiState.apiBalance)
 
             // ── Section 1: Claude.ai Usage Tracking ──────────────────────────
             SectionCard(title = "Claude.ai Usage Tracking") {
