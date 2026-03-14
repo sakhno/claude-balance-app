@@ -82,7 +82,9 @@ data class BootstrapResponse(
     @Json(name = "account") val account: BootstrapAccount? = null,
     @Json(name = "organization") val organization: BootstrapOrganization? = null,
     @Json(name = "active_organization") val activeOrganization: BootstrapOrganization? = null,
-    @Json(name = "memberships") val memberships: List<BootstrapMembership>? = null
+    @Json(name = "memberships") val memberships: List<BootstrapMembership>? = null,
+    // Some API responses return a flat array of organizations
+    @Json(name = "organizations") val organizations: List<BootstrapOrganization>? = null
 )
 
 @JsonClass(generateAdapter = true)

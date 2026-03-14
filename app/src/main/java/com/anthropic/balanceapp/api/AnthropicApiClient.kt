@@ -244,7 +244,10 @@ class ClaudeAiApiClient {
                 ?: bootstrap?.activeOrganization?.uuid
                 ?: bootstrap?.memberships?.firstOrNull()?.organization?.id
                 ?: bootstrap?.memberships?.firstOrNull()?.organization?.uuid
-                ?: return Pair(null, "No organization ID found in bootstrap response")
+                ?: bootstrap?.organizations?.firstOrNull()?.id
+                ?: bootstrap?.organizations?.firstOrNull()?.uuid
+                // Personal accounts have no org — return empty data (no usage limits to show)
+                ?: return Pair(ClaudeUsageData(fetchedAtMs = System.currentTimeMillis()), null)
 
             // Try org limits endpoint
             val orgResponse = service.getOrgLimits(cookie, orgId = orgId)

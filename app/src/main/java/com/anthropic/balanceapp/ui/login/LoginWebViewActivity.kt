@@ -52,6 +52,9 @@ class LoginWebViewActivity : ComponentActivity() {
                 useWideViewPort = true
                 setSupportZoom(true)
                 builtInZoomControls = false
+                // Use a full Chrome user agent — Google OAuth blocks embedded WebViews
+                // that expose the "wv" (WebView) indicator in the default UA string.
+                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
             }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
