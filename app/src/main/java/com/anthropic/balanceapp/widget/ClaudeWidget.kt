@@ -32,10 +32,10 @@ import kotlin.math.roundToInt
 class ClaudeWidget : GlanceAppWidget() {
 
     companion object {
-        val SMALL = DpSize(110.dp, 40.dp)
-        val MEDIUM = DpSize(220.dp, 80.dp)
-        val LARGE = DpSize(280.dp, 120.dp)
-        val EXTRA_LARGE = DpSize(350.dp, 180.dp)
+        val SMALL = DpSize(140.dp, 60.dp)
+        val MEDIUM = DpSize(220.dp, 100.dp)
+        val LARGE = DpSize(280.dp, 140.dp)
+        val EXTRA_LARGE = DpSize(350.dp, 200.dp)
     }
 
     override val sizeMode = SizeMode.Responsive(
@@ -73,9 +73,9 @@ fun WidgetContent(
         ChronoUnit.DAYS.between(today, endOfMonth).toInt() + 1
     }
 
-    val isSmall = size.width < 180.dp
-    val isLarge = size.width >= 280.dp && size.height >= 120.dp
-    val isExtraLarge = size.width >= 350.dp && size.height >= 180.dp
+    val isSmall = size.width < 200.dp
+    val isLarge = size.width >= 280.dp && size.height >= 140.dp
+    val isExtraLarge = size.width >= 350.dp && size.height >= 200.dp
 
     GlanceTheme {
         Box(
@@ -84,12 +84,13 @@ fun WidgetContent(
                 .background(GlanceTheme.colors.widgetBackground)
                 .cornerRadius(16.dp)
                 .clickable(actionRunCallback<OpenAppAction>())
-                .padding(if (isSmall) 6.dp else 12.dp)
+                .padding(if (isSmall) 10.dp else 14.dp)
         ) {
             when {
                 isSmall -> SmallWidgetLayout(
                     budgetPercent = budgetPercent,
                     costUsd = cached.estimatedCostUsd,
+                    daysUntilReset = daysUntilReset,
                     hasData = cached.fetchedAtMs > 0
                 )
                 isExtraLarge -> ExtraLargeWidgetLayout(
@@ -118,7 +119,7 @@ fun WidgetContent(
 }
 
 @Composable
-fun SmallWidgetLayout(budgetPercent: Int, costUsd: Double, hasData: Boolean) {
+fun SmallWidgetLayout(budgetPercent: Int, costUsd: Double, daysUntilReset: Int, hasData: Boolean) {
     Column(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
@@ -128,16 +129,23 @@ fun SmallWidgetLayout(budgetPercent: Int, costUsd: Double, hasData: Boolean) {
             text = if (hasData) "$budgetPercent%" else "--",
             style = TextStyle(
                 color = progressColorProvider(budgetPercent),
-                fontSize = 18.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
+            )
+        )
+        Text(
+            text = if (hasData) "\$${"%.2f".format(costUsd)}" else "No data",
+            style = TextStyle(
+                color = GlanceTheme.colors.secondary,
+                fontSize = 13.sp
             )
         )
         if (hasData) {
             Text(
-                text = "\$${"%.2f".format(costUsd)}",
+                text = "${daysUntilReset}d left",
                 style = TextStyle(
                     color = GlanceTheme.colors.secondary,
-                    fontSize = 10.sp
+                    fontSize = 12.sp
                 )
             )
         }
@@ -163,22 +171,22 @@ fun MediumWidgetLayout(
         ) {
             Column(modifier = GlanceModifier.defaultWeight()) {
                 Text(
-                    text = "Claude Usage",
+                    text = "Anthropic API",
                     style = TextStyle(
                         color = GlanceTheme.colors.onSurface,
-                        fontSize = 11.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
                 )
                 Text(
                     text = when {
                         hasData -> "$budgetPercent% used"
-                        lastError.isNotEmpty() -> "Error syncing"
+                        lastError.isNotEmpty() -> "Sync error"
                         else -> "Loading..."
                     },
                     style = TextStyle(
                         color = if (hasData) progressColorProvider(budgetPercent) else GlanceTheme.colors.secondary,
-                        fontSize = 18.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -188,7 +196,7 @@ fun MediumWidgetLayout(
                     text = if (hasData) "\$${"%.2f".format(costUsd)}" else "--",
                     style = TextStyle(
                         color = GlanceTheme.colors.onSurface,
-                        fontSize = 14.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -196,19 +204,19 @@ fun MediumWidgetLayout(
                     text = "of \$${"%.0f".format(budget)}",
                     style = TextStyle(
                         color = GlanceTheme.colors.secondary,
-                        fontSize = 10.sp
+                        fontSize = 13.sp
                     )
                 )
             }
         }
         Spacer(modifier = GlanceModifier.height(6.dp))
         WidgetProgressBar(percent = budgetPercent)
-        Spacer(modifier = GlanceModifier.height(4.dp))
+        Spacer(modifier = GlanceModifier.height(5.dp))
         Text(
-            text = "Resets in $daysUntilReset days",
+            text = "Resets in $daysUntilReset days · incl. Claude Code",
             style = TextStyle(
                 color = GlanceTheme.colors.secondary,
-                fontSize = 10.sp
+                fontSize = 12.sp
             )
         )
     }
@@ -228,10 +236,10 @@ fun LargeWidgetLayout(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Claude API",
+                text = "Anthropic API (+ Claude Code)",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
                 ),
                 modifier = GlanceModifier.defaultWeight()
@@ -240,7 +248,7 @@ fun LargeWidgetLayout(
                 text = if (hasData) formatRelativeTime(cached.fetchedAtMs) else "",
                 style = TextStyle(
                     color = GlanceTheme.colors.secondary,
-                    fontSize = 10.sp
+                    fontSize = 12.sp
                 )
             )
         }
@@ -250,7 +258,7 @@ fun LargeWidgetLayout(
             text = if (hasData) "$budgetPercent%" else "--",
             style = TextStyle(
                 color = progressColorProvider(budgetPercent),
-                fontSize = 32.sp,
+                fontSize = 36.sp,
                 fontWeight = FontWeight.Bold
             )
         )
@@ -258,12 +266,12 @@ fun LargeWidgetLayout(
             text = "of monthly budget used",
             style = TextStyle(
                 color = GlanceTheme.colors.secondary,
-                fontSize = 10.sp
+                fontSize = 12.sp
             )
         )
         Spacer(modifier = GlanceModifier.height(8.dp))
         WidgetProgressBar(percent = budgetPercent)
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.height(10.dp))
 
         Row(modifier = GlanceModifier.fillMaxWidth()) {
             WidgetStatCell(
@@ -303,10 +311,10 @@ fun ExtraLargeWidgetLayout(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Claude API Usage",
+                text = "Anthropic API · incl. Claude Code",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 modifier = GlanceModifier.defaultWeight()
@@ -315,7 +323,7 @@ fun ExtraLargeWidgetLayout(
                 text = if (hasData) formatRelativeTime(cached.fetchedAtMs) else "No data",
                 style = TextStyle(
                     color = GlanceTheme.colors.secondary,
-                    fontSize = 10.sp
+                    fontSize = 12.sp
                 )
             )
         }
@@ -327,7 +335,7 @@ fun ExtraLargeWidgetLayout(
                     text = if (hasData) "$budgetPercent%" else "--",
                     style = TextStyle(
                         color = progressColorProvider(budgetPercent),
-                        fontSize = 36.sp,
+                        fontSize = 40.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -335,7 +343,7 @@ fun ExtraLargeWidgetLayout(
                     text = "budget used",
                     style = TextStyle(
                         color = GlanceTheme.colors.secondary,
-                        fontSize = 11.sp
+                        fontSize = 13.sp
                     )
                 )
             }
@@ -347,7 +355,7 @@ fun ExtraLargeWidgetLayout(
                     text = if (hasData) "\$${"%.2f".format(cached.estimatedCostUsd)}" else "--",
                     style = TextStyle(
                         color = GlanceTheme.colors.onSurface,
-                        fontSize = 24.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -355,7 +363,7 @@ fun ExtraLargeWidgetLayout(
                     text = "of \$${"%.0f".format(settings.monthlyBudgetUsd)} budget",
                     style = TextStyle(
                         color = GlanceTheme.colors.secondary,
-                        fontSize = 11.sp
+                        fontSize = 13.sp
                     )
                 )
             }
@@ -390,10 +398,10 @@ fun ExtraLargeWidgetLayout(
         if (cached.lastError.isNotEmpty()) {
             Spacer(modifier = GlanceModifier.height(6.dp))
             Text(
-                text = "Error: ${cached.lastError.take(60)}",
+                text = "⚠ ${cached.lastError.take(80)}",
                 style = TextStyle(
                     color = ColorProvider(Color(0xFFE57373)),
-                    fontSize = 9.sp
+                    fontSize = 11.sp
                 )
             )
         }
@@ -404,31 +412,27 @@ fun ExtraLargeWidgetLayout(
 fun WidgetProgressBar(percent: Int) {
     val barColor = progressColorProvider(percent)
     val clampedPercent = percent.coerceIn(0, 100)
-    // Use a Row with two weighted children to simulate a progress bar.
-    // filledWeight : emptyWeight == percent : (100 - percent)
-    val filledWeight = clampedPercent.coerceAtLeast(1)  // avoid zero-weight crash
+    val filledWeight = clampedPercent.coerceAtLeast(1)
     val emptyWeight = (100 - clampedPercent).coerceAtLeast(1)
 
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .height(6.dp)
+            .height(8.dp)
     ) {
-        // Filled portion
         Box(
             modifier = GlanceModifier
-                .width(filledWeight.dp)  // proportional placeholder — layout engine scales via weight
+                .width(filledWeight.dp)
                 .fillMaxHeight()
                 .background(barColor)
-                .cornerRadius(3.dp)
+                .cornerRadius(4.dp)
         ) {}
-        // Empty portion (transparent background)
         Box(
             modifier = GlanceModifier
                 .width(emptyWeight.dp)
                 .fillMaxHeight()
                 .background(ColorProvider(Color(0x22888888)))
-                .cornerRadius(3.dp)
+                .cornerRadius(4.dp)
         ) {}
     }
 }
@@ -440,14 +444,14 @@ fun WidgetStatCell(label: String, value: String, modifier: GlanceModifier = Glan
             text = label,
             style = TextStyle(
                 color = GlanceTheme.colors.secondary,
-                fontSize = 9.sp
+                fontSize = 11.sp
             )
         )
         Text(
             text = value,
             style = TextStyle(
                 color = GlanceTheme.colors.onSurface,
-                fontSize = 12.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
         )
