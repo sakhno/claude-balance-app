@@ -66,6 +66,13 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // ── Summary cards (live data) ─────────────────────────────────────
+            if (settings.claudeSessionToken.isNotBlank()) {
+                UsageSummaryCard(usage = uiState.claudeUsage)
+            }
+            if (settings.anthropicApiKey.isNotBlank()) {
+                BalanceSummaryCard(balance = uiState.apiBalance)
+            }
 
             // ── Section 1: Claude.ai Usage Tracking ──────────────────────────
             SectionCard(title = "Claude.ai Usage Tracking") {

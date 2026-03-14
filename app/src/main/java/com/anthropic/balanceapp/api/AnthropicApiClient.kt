@@ -39,6 +39,12 @@ interface ClaudeAiService {
         @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)"
     ): Response<ResponseBody>
 
+    @GET("api/account_limits")
+    suspend fun getAccountLimits(
+        @Header("Cookie") cookie: String,
+        @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)"
+    ): Response<ResponseBody>
+
     @GET("api/organizations/{orgId}/limits")
     suspend fun getOrgLimits(
         @Header("Cookie") cookie: String,
@@ -136,6 +142,10 @@ class ClaudeAiApiClient {
             val primaryResult = tryMembershipLimits(cookie)
             if (primaryResult != null) return ApiResult.Success(primaryResult)
 
+            // Secondary endpoint (newer API path)
+            val secondaryResult = tryAccountLimits(cookie)
+            if (secondaryResult != null) return ApiResult.Success(secondaryResult)
+
             // Fallback: bootstrap → parse embedded limits or org limits
             val (bootstrapResult, bootstrapError) = tryBootstrapThenOrgLimits(cookie)
             if (bootstrapResult != null) return ApiResult.Success(bootstrapResult)
@@ -147,6 +157,26 @@ class ClaudeAiApiClient {
             ApiResult.Error("Request timed out")
         } catch (e: Exception) {
             ApiResult.Error("Unexpected error: ${e.localizedMessage}")
+        }
+    }
+
+    private suspend fun tryAccountLimits(cookie: String): ClaudeUsageData? {
+        return try {
+            val response = service.getAccountLimits(cookie)
+            when {
+                response.isSuccessful -> {
+                    val body = response.body()?.string() ?: return null
+                    if (looksLikeHtml(body)) return null
+                    parseMembershipLimits(body)
+                }
+                response.code() == 401 || response.code() == 403 ->
+                    throw SessionExpiredException("Session token expired or invalid")
+                else -> null
+            }
+        } catch (e: SessionExpiredException) {
+            throw e
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -190,7 +220,10 @@ class ClaudeAiApiClient {
             val accountLimits = bootstrap?.account?.membershipLimits ?: bootstrap?.account?.limits
             if (accountLimits != null) {
                 val parsed = buildClaudeUsageData(accountLimits)
-                if (parsed.sessionPercent > 0 || parsed.weeklyPercent > 0) return Pair(parsed, null)
+                // Accept even 0% — it's valid at the start of a period
+                if (parsed.sessionResetAtMs > 0 || parsed.weeklyResetAtMs > 0
+                    || parsed.sessionPercent > 0 || parsed.weeklyPercent > 0
+                ) return Pair(parsed, null)
             }
 
             // Try embedded limits from memberships list
@@ -199,7 +232,9 @@ class ClaudeAiApiClient {
             }
             if (membershipLimits != null) {
                 val parsed = buildClaudeUsageData(membershipLimits)
-                if (parsed.sessionPercent > 0 || parsed.weeklyPercent > 0) return Pair(parsed, null)
+                if (parsed.sessionResetAtMs > 0 || parsed.weeklyResetAtMs > 0
+                    || parsed.sessionPercent > 0 || parsed.weeklyPercent > 0
+                ) return Pair(parsed, null)
             }
 
             // Extract org ID from multiple possible locations
@@ -231,7 +266,9 @@ class ClaudeAiApiClient {
                 }
             }
 
-            Pair(null, "Org limits unavailable (HTTP ${orgResponse.code()})")
+            val orgCode = orgResponse.code()
+            val rateCode = rateResponse.code()
+            Pair(null, "All usage endpoints failed (limits: HTTP $orgCode, rate_limits: HTTP $rateCode)")
         } catch (e: Exception) {
             Pair(null, "Unexpected error: ${e.localizedMessage}")
         }
@@ -302,6 +339,21 @@ class ClaudeAiApiClient {
                     }
                 }
                 limitsResponse.code() == 401 || limitsResponse.code() == 403 ->
+                    return ApiResult.Error("Session token expired or invalid")
+            }
+
+            // Try newer account_limits endpoint
+            val accountLimitsResponse = service.getAccountLimits(cookie)
+            when {
+                accountLimitsResponse.isSuccessful -> {
+                    val body = accountLimitsResponse.body()?.string() ?: ""
+                    return if (looksLikeHtml(body)) {
+                        ApiResult.Error("Session token expired or invalid")
+                    } else {
+                        ApiResult.Success(true)
+                    }
+                }
+                accountLimitsResponse.code() == 401 || accountLimitsResponse.code() == 403 ->
                     return ApiResult.Error("Session token expired or invalid")
             }
 
