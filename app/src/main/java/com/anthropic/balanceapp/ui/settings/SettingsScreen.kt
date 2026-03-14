@@ -1,5 +1,8 @@
 package com.anthropic.balanceapp.ui.settings
 
+import android.app.Activity.RESULT_OK
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -23,6 +27,7 @@ import com.anthropic.balanceapp.api.formatResetTime
 import com.anthropic.balanceapp.api.models.ApiBalance
 import com.anthropic.balanceapp.api.models.ClaudeUsageData
 import com.anthropic.balanceapp.data.WidgetTheme
+import com.anthropic.balanceapp.ui.login.LoginWebViewActivity
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
@@ -86,32 +91,70 @@ fun SettingsScreen(
 
             // ── Section 1: Claude.ai Usage Tracking ──────────────────────────
             SectionCard(title = "Claude.ai Usage Tracking") {
-                Text(
-                    text = "Get from claude.ai browser cookies → sessionKey",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                val context = LocalContext.current
+                val loginLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == RESULT_OK) {
+                        val token = result.data?.getStringExtra(LoginWebViewActivity.RESULT_SESSION_TOKEN)
+                        if (!token.isNullOrBlank()) {
+                            viewModel.updateClaudeSessionToken(token)
+                            viewModel.validateSessionToken()
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        loginLauncher.launch(
+                            android.content.Intent(context, LoginWebViewActivity::class.java)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Login with Claude.ai")
+                }
+
+                if (settings.claudeSessionToken.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "✓ Session token saved",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
-                var showToken by remember { mutableStateOf(false) }
-                OutlinedTextField(
-                    value = settings.claudeSessionToken,
-                    onValueChange = { viewModel.updateClaudeSessionToken(it) },
-                    label = { Text("Session Token") },
-                    placeholder = { Text("sk-ant-sid01-...") },
-                    visualTransformation = if (showToken) VisualTransformation.None
-                    else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { showToken = !showToken }) {
-                            Icon(
-                                if (showToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showToken) "Hide" else "Show"
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                // Manual override
+                var showManual by remember { mutableStateOf(false) }
+                TextButton(onClick = { showManual = !showManual }) {
+                    Text(if (showManual) "Hide manual entry" else "Enter token manually")
+                }
+
+                AnimatedVisibility(visible = showManual) {
+                    Column {
+                        var showToken by remember { mutableStateOf(false) }
+                        OutlinedTextField(
+                            value = settings.claudeSessionToken,
+                            onValueChange = { viewModel.updateClaudeSessionToken(it) },
+                            label = { Text("Session Token") },
+                            placeholder = { Text("sk-ant-sid01-...") },
+                            visualTransformation = if (showToken) VisualTransformation.None
+                            else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showToken = !showToken }) {
+                                    Icon(
+                                        if (showToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (showToken) "Hide" else "Show"
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
