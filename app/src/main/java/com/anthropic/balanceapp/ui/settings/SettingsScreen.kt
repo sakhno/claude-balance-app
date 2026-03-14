@@ -99,7 +99,7 @@ fun SettingsScreen(
                         val token = result.data?.getStringExtra(LoginWebViewActivity.RESULT_SESSION_TOKEN)
                         if (!token.isNullOrBlank()) {
                             viewModel.updateClaudeSessionToken(token)
-                            viewModel.validateSessionToken()
+                            viewModel.validateSessionToken() // also saves on success
                         }
                     }
                 }

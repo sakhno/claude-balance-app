@@ -246,19 +246,36 @@ class ClaudeAiApiClient {
     suspend fun validateSessionToken(sessionToken: String): ApiResult<Boolean> {
         return try {
             val cookie = formatCookie(sessionToken)
-            val response = service.getMembershipLimits(cookie)
+
+            // Try membership limits first
+            val limitsResponse = service.getMembershipLimits(cookie)
             when {
-                response.isSuccessful -> {
-                    val body = response.body()?.string() ?: ""
+                limitsResponse.isSuccessful -> {
+                    val body = limitsResponse.body()?.string() ?: ""
+                    return if (looksLikeHtml(body)) {
+                        ApiResult.Error("Session token expired or invalid")
+                    } else {
+                        ApiResult.Success(true)
+                    }
+                }
+                limitsResponse.code() == 401 || limitsResponse.code() == 403 ->
+                    return ApiResult.Error("Session token expired or invalid")
+            }
+
+            // Fallback: try bootstrap endpoint
+            val bootstrapResponse = service.getBootstrap(cookie)
+            when {
+                bootstrapResponse.isSuccessful -> {
+                    val body = bootstrapResponse.body()?.string() ?: ""
                     if (looksLikeHtml(body)) {
                         ApiResult.Error("Session token expired or invalid")
                     } else {
                         ApiResult.Success(true)
                     }
                 }
-                response.code() == 401 || response.code() == 403 ->
+                bootstrapResponse.code() == 401 || bootstrapResponse.code() == 403 ->
                     ApiResult.Error("Session token expired or invalid")
-                else -> ApiResult.Error("Validation failed: HTTP ${response.code()}", response.code())
+                else -> ApiResult.Error("Validation failed: HTTP ${bootstrapResponse.code()}", bootstrapResponse.code())
             }
         } catch (e: java.net.UnknownHostException) {
             ApiResult.NetworkError

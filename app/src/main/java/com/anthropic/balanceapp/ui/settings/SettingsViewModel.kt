@@ -121,6 +121,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 it.copy(isValidatingSessionToken = true, sessionTokenValidationResult = null)
             }
             val result = claudeClient.validateSessionToken(token)
+            if (result is ApiResult.Success) {
+                dataStore.saveSettings(_uiState.value.settings)
+            }
             val message = when (result) {
                 is ApiResult.Success -> "Session token is valid!"
                 is ApiResult.Error -> "Invalid: ${result.message}"
@@ -143,6 +146,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 it.copy(isValidatingApiKey = true, apiKeyValidationResult = null)
             }
             val result = balanceClient.validateApiKey(key)
+            if (result is ApiResult.Success) {
+                dataStore.saveSettings(_uiState.value.settings)
+            }
             val message = when (result) {
                 is ApiResult.Success -> "API key is valid!"
                 is ApiResult.Error -> "Invalid: ${result.message}"
