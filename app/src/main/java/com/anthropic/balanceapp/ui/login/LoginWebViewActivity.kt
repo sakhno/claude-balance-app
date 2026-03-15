@@ -15,6 +15,7 @@ import android.widget.ProgressBar
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.WindowCompat
+import com.anthropic.balanceapp.logging.AppLogger
 
 class LoginWebViewActivity : ComponentActivity() {
 
@@ -59,6 +60,7 @@ class LoginWebViewActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
+                    AppLogger.d("WebView page finished: $url")
                     progress.visibility = android.view.View.GONE
                     tryExtractSessionToken(url)
                 }
@@ -109,17 +111,26 @@ class LoginWebViewActivity : ComponentActivity() {
 
         if (!isSuccessPage) return
 
+        AppLogger.d("Login success page detected: $url — extracting session token")
+
         // Give cookies a moment to be committed
         webView.postDelayed({
-            val cookieString = CookieManager.getInstance().getCookie("https://claude.ai") ?: return@postDelayed
+            val cookieString = CookieManager.getInstance().getCookie("https://claude.ai") ?: run {
+                AppLogger.w("No cookies found for claude.ai")
+                return@postDelayed
+            }
             val token = cookieString.split(";")
                 .map { it.trim() }
                 .firstOrNull { it.startsWith("sessionKey=") }
                 ?.removePrefix("sessionKey=")
                 ?.trim()
-                ?: return@postDelayed
+                ?: run {
+                    AppLogger.w("sessionKey cookie not found in: ${cookieString.take(200)}")
+                    return@postDelayed
+                }
 
             if (token.isNotBlank()) {
+                AppLogger.d("Session token extracted (length=${token.length})")
                 CookieManager.getInstance().flush()
                 val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
                 setResult(Activity.RESULT_OK, result)

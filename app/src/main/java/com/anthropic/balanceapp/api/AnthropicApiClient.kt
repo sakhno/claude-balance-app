@@ -8,7 +8,7 @@ import com.anthropic.balanceapp.api.models.MembershipLimitsResponse
 import com.anthropic.balanceapp.api.models.OrgLimitsResponse
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import android.util.Log
+import com.anthropic.balanceapp.logging.AppLogger
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
@@ -168,7 +168,7 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    Log.d("BalanceApp", "account_limits response: $body")
+                    AppLogger.d("account_limits response: $body")
                     parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 ->
@@ -189,7 +189,7 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    Log.d("BalanceApp", "membership_limits response: $body")
+                    AppLogger.d("membership_limits response: $body")
                     parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 -> {
@@ -213,7 +213,7 @@ class ClaudeAiApiClient {
             }
             val bootstrapBody = bootstrapResponse.body()?.string() ?: return Pair(null, "Empty bootstrap response")
             if (looksLikeHtml(bootstrapBody)) return Pair(null, "Session token expired or invalid")
-            Log.d("BalanceApp", "bootstrap response: $bootstrapBody")
+            AppLogger.d("bootstrap response: $bootstrapBody")
 
             val bootstrapAdapter = moshi.adapter(BootstrapResponse::class.java)
             val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (e: Exception) {

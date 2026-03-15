@@ -6,6 +6,7 @@ import com.anthropic.balanceapp.api.AnthropicBalanceClient
 import com.anthropic.balanceapp.api.ApiResult
 import com.anthropic.balanceapp.api.ClaudeAiApiClient
 import com.anthropic.balanceapp.data.AppDataStore
+import com.anthropic.balanceapp.logging.AppLogger
 import com.anthropic.balanceapp.notifications.AlertManager
 import com.anthropic.balanceapp.widget.ClaudeWidgetReceiver
 import java.util.concurrent.TimeUnit
@@ -21,6 +22,7 @@ class SyncWorker(
     private val alertManager = AlertManager(appContext)
 
     override suspend fun doWork(): Result {
+        AppLogger.d("doWork started (attempt ${runAttemptCount + 1})")
         val settings = dataStore.getSettings()
 
         var anySuccess = false
@@ -28,9 +30,11 @@ class SyncWorker(
 
         // ── 1. Fetch Claude.ai usage ──────────────────────────────────────────
         if (settings.claudeSessionToken.isNotBlank()) {
+            AppLogger.d("Fetching Claude.ai usage…")
             when (val result = claudeClient.fetchUsage(settings.claudeSessionToken)) {
                 is ApiResult.Success -> {
                     val usage = result.data
+                    AppLogger.d("Claude usage OK — session=${usage.sessionPercent}% weekly=${usage.weeklyPercent}%")
                     dataStore.saveClaudeUsage(usage)
                     anySuccess = true
 
@@ -44,6 +48,7 @@ class SyncWorker(
                     }
                 }
                 is ApiResult.Error -> {
+                    AppLogger.w("Claude usage error (code=${result.code}): ${result.message}")
                     dataStore.saveClaudeUsageError(result.message)
                     // Auth errors should not retry
                     if (result.code != 401 && result.code != 403) {
@@ -51,16 +56,21 @@ class SyncWorker(
                     }
                 }
                 is ApiResult.NetworkError -> {
+                    AppLogger.w("Claude usage network error")
                     anyRetryNeeded = true
                 }
             }
+        } else {
+            AppLogger.d("No Claude session token configured, skipping usage fetch")
         }
 
         // ── 2. Fetch API billing balance ──────────────────────────────────────
         if (settings.anthropicApiKey.isNotBlank()) {
+            AppLogger.d("Fetching API billing balance…")
             when (val result = balanceClient.fetchBalance(settings.anthropicApiKey)) {
                 is ApiResult.Success -> {
                     val balance = result.data
+                    AppLogger.d("Balance OK — remaining=\$${balance.remainingUsd} pending=\$${balance.pendingUsd}")
                     dataStore.saveApiBalance(balance)
                     anySuccess = true
 
@@ -74,24 +84,30 @@ class SyncWorker(
                     }
                 }
                 is ApiResult.Error -> {
+                    AppLogger.w("Balance error (code=${result.code}): ${result.message}")
                     dataStore.saveApiBalanceError(result.message)
                     if (result.code != 401 && result.code != 403) {
                         anyRetryNeeded = true
                     }
                 }
                 is ApiResult.NetworkError -> {
+                    AppLogger.w("Balance network error")
                     anyRetryNeeded = true
                 }
             }
+        } else {
+            AppLogger.d("No API key configured, skipping balance fetch")
         }
 
         // Update widget regardless of outcome so stale/error state is shown
         ClaudeWidgetReceiver.updateWidgets(applicationContext)
 
-        return when {
+        val result = when {
             anyRetryNeeded && !anySuccess -> Result.retry()
             else -> Result.success()
         }
+        AppLogger.d("doWork finished → $result")
+        return result
     }
 
     companion object {

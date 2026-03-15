@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.anthropic.balanceapp.ui.dashboard.DashboardScreen
+import com.anthropic.balanceapp.ui.logs.LogsScreen
 import com.anthropic.balanceapp.ui.settings.SettingsScreen
 import com.anthropic.balanceapp.ui.settings.SettingsViewModel
 import com.anthropic.balanceapp.ui.theme.BalanceAppTheme
@@ -75,6 +77,12 @@ private fun MainNavigation() {
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                     label = { Text("Settings") }
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.List, contentDescription = "Logs") },
+                    label = { Text("Logs") }
+                )
             }
         }
     ) { innerPadding ->
@@ -82,6 +90,7 @@ private fun MainNavigation() {
             when (selectedTab) {
                 0 -> DashboardScreen(viewModel = sharedViewModel)
                 1 -> SettingsScreen(viewModel = sharedViewModel)
+                2 -> LogsScreen()
             }
         }
     }
