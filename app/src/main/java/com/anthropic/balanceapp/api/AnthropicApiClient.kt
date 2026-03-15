@@ -241,17 +241,17 @@ class ClaudeAiApiClient {
                 ) return Pair(parsed, null)
             }
 
-            // Extract org ID from multiple possible locations
-            val orgId = bootstrap?.organization?.id
-                ?: bootstrap?.organization?.uuid
-                ?: bootstrap?.activeOrganization?.id
+            // Extract org ID — prefer UUID over numeric id (API endpoints expect UUID)
+            val orgId = bootstrap?.organization?.uuid
+                ?: bootstrap?.organization?.id
                 ?: bootstrap?.activeOrganization?.uuid
-                ?: bootstrap?.memberships?.firstOrNull()?.organization?.id
+                ?: bootstrap?.activeOrganization?.id
                 ?: bootstrap?.memberships?.firstOrNull()?.organization?.uuid
-                ?: bootstrap?.account?.memberships?.firstOrNull()?.organization?.id
+                ?: bootstrap?.memberships?.firstOrNull()?.organization?.id
                 ?: bootstrap?.account?.memberships?.firstOrNull()?.organization?.uuid
-                ?: bootstrap?.organizations?.firstOrNull()?.id
+                ?: bootstrap?.account?.memberships?.firstOrNull()?.organization?.id
                 ?: bootstrap?.organizations?.firstOrNull()?.uuid
+                ?: bootstrap?.organizations?.firstOrNull()?.id
                 // Personal accounts have no org — return empty data (no usage limits to show)
                 ?: return Pair(ClaudeUsageData(fetchedAtMs = System.currentTimeMillis()), null)
             AppLogger.d("Fetching org limits for orgId=$orgId")

@@ -21,8 +21,6 @@ class LoginWebViewActivity : ComponentActivity() {
 
     companion object {
         const val RESULT_SESSION_TOKEN = "session_token"
-        // Paths where we are still in the auth flow — skip extraction on these
-        private val AUTH_PATHS = setOf("/login", "/auth", "/oauth", "/callback", "/sso")
     }
 
     private lateinit var webView: WebView
@@ -109,41 +107,25 @@ class LoginWebViewActivity : ComponentActivity() {
     }
 
     private fun tryExtractSessionToken(url: String) {
-        val uri = try { android.net.Uri.parse(url) } catch (_: Exception) { return }
-        val host = uri.host ?: return
-        val path = uri.path ?: ""
-
-        // Only attempt on claude.ai, skip while still in the auth/login flow
+        val host = try { android.net.Uri.parse(url).host } catch (_: Exception) { null } ?: return
         if (!host.contains("claude.ai")) return
-        if (AUTH_PATHS.any { path.startsWith(it) }) return
 
-        AppLogger.d("On claude.ai page: $url — checking for session token")
+        val cookieString = CookieManager.getInstance().getCookie("https://claude.ai")
+        val token = cookieString
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("sessionKey=") }
+            ?.removePrefix("sessionKey=")
+            ?.trim()
 
-        // Try to extract; retry up to 2 more times if cookies aren't committed yet
-        fun extract(attemptsLeft: Int) {
-            val cookieString = CookieManager.getInstance().getCookie("https://claude.ai")
-            val token = cookieString
-                ?.split(";")
-                ?.map { it.trim() }
-                ?.firstOrNull { it.startsWith("sessionKey=") }
-                ?.removePrefix("sessionKey=")
-                ?.trim()
+        AppLogger.d("claude.ai page: $url | sessionKey=${if (token != null) "found (len=${token.length})" else "not found"}")
 
-            if (!token.isNullOrBlank()) {
-                AppLogger.d("Session token extracted (length=${token.length})")
-                CookieManager.getInstance().flush()
-                val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
-                setResult(Activity.RESULT_OK, result)
-                finish()
-            } else if (attemptsLeft > 0) {
-                AppLogger.d("sessionKey not found yet, retrying… (cookies: ${cookieString?.take(200)})")
-                webView.postDelayed({ extract(attemptsLeft - 1) }, 800)
-            } else {
-                AppLogger.w("sessionKey cookie not found after retries (cookies: ${cookieString?.take(200)})")
-            }
+        if (!token.isNullOrBlank()) {
+            CookieManager.getInstance().flush()
+            val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
+            setResult(Activity.RESULT_OK, result)
+            finish()
         }
-
-        webView.postDelayed({ extract(attemptsLeft = 2) }, 500)
     }
 
     override fun onDestroy() {
