@@ -21,7 +21,8 @@ class LoginWebViewActivity : ComponentActivity() {
 
     companion object {
         const val RESULT_SESSION_TOKEN = "session_token"
-        private val LOGIN_SUCCESS_PATHS = setOf("/", "/new", "/chats", "/chat")
+        // Paths where we are still in the auth flow — skip extraction on these
+        private val AUTH_PATHS = setOf("/login", "/auth", "/oauth", "/callback", "/sso")
     }
 
     private lateinit var webView: WebView
@@ -49,6 +50,7 @@ class LoginWebViewActivity : ComponentActivity() {
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
+                databaseEnabled = true
                 loadWithOverviewMode = true
                 useWideViewPort = true
                 setSupportZoom(true)
@@ -56,6 +58,10 @@ class LoginWebViewActivity : ComponentActivity() {
                 // Use a full Chrome user agent — Google OAuth blocks embedded WebViews
                 // that expose the "wv" (WebView) indicator in the default UA string.
                 userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                @Suppress("DEPRECATION")
+                saveFormData = true
+                @Suppress("DEPRECATION")
+                savePassword = true
             }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
@@ -103,40 +109,41 @@ class LoginWebViewActivity : ComponentActivity() {
     }
 
     private fun tryExtractSessionToken(url: String) {
-        val isSuccessPage = try {
-            val uri = android.net.Uri.parse(url)
-            uri.host?.contains("claude.ai") == true &&
-                LOGIN_SUCCESS_PATHS.any { path -> uri.path == path || uri.path?.startsWith(path) == true }
-        } catch (_: Exception) { false }
+        val uri = try { android.net.Uri.parse(url) } catch (_: Exception) { return }
+        val host = uri.host ?: return
+        val path = uri.path ?: ""
 
-        if (!isSuccessPage) return
+        // Only attempt on claude.ai, skip while still in the auth/login flow
+        if (!host.contains("claude.ai")) return
+        if (AUTH_PATHS.any { path.startsWith(it) }) return
 
-        AppLogger.d("Login success page detected: $url — extracting session token")
+        AppLogger.d("On claude.ai page: $url — checking for session token")
 
-        // Give cookies a moment to be committed
-        webView.postDelayed({
-            val cookieString = CookieManager.getInstance().getCookie("https://claude.ai") ?: run {
-                AppLogger.w("No cookies found for claude.ai")
-                return@postDelayed
-            }
-            val token = cookieString.split(";")
-                .map { it.trim() }
-                .firstOrNull { it.startsWith("sessionKey=") }
+        // Try to extract; retry up to 2 more times if cookies aren't committed yet
+        fun extract(attemptsLeft: Int) {
+            val cookieString = CookieManager.getInstance().getCookie("https://claude.ai")
+            val token = cookieString
+                ?.split(";")
+                ?.map { it.trim() }
+                ?.firstOrNull { it.startsWith("sessionKey=") }
                 ?.removePrefix("sessionKey=")
                 ?.trim()
-                ?: run {
-                    AppLogger.w("sessionKey cookie not found in: ${cookieString.take(200)}")
-                    return@postDelayed
-                }
 
-            if (token.isNotBlank()) {
+            if (!token.isNullOrBlank()) {
                 AppLogger.d("Session token extracted (length=${token.length})")
                 CookieManager.getInstance().flush()
                 val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
                 setResult(Activity.RESULT_OK, result)
                 finish()
+            } else if (attemptsLeft > 0) {
+                AppLogger.d("sessionKey not found yet, retrying… (cookies: ${cookieString?.take(200)})")
+                webView.postDelayed({ extract(attemptsLeft - 1) }, 800)
+            } else {
+                AppLogger.w("sessionKey cookie not found after retries (cookies: ${cookieString?.take(200)})")
             }
-        }, 500)
+        }
+
+        webView.postDelayed({ extract(attemptsLeft = 2) }, 500)
     }
 
     override fun onDestroy() {
