@@ -168,12 +168,15 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    AppLogger.d("account_limits response: ${body.take(500)}")
+                    AppLogger.d("account_limits response: ${body.take(1500)}")
                     parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 ->
                     throw SessionExpiredException("Session token expired or invalid")
-                else -> null
+                else -> {
+                    AppLogger.d("account_limits HTTP ${response.code()}")
+                    null
+                }
             }
         } catch (e: SessionExpiredException) {
             throw e
@@ -189,13 +192,16 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    AppLogger.d("membership_limits response: ${body.take(500)}")
+                    AppLogger.d("membership_limits response: ${body.take(1500)}")
                     parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 -> {
                     throw SessionExpiredException("Session token expired or invalid")
                 }
-                else -> null
+                else -> {
+                    AppLogger.d("membership_limits HTTP ${response.code()}")
+                    null
+                }
             }
         } catch (e: SessionExpiredException) {
             throw e
@@ -213,7 +219,7 @@ class ClaudeAiApiClient {
             }
             val bootstrapBody = bootstrapResponse.body()?.string() ?: return Pair(null, "Empty bootstrap response")
             if (looksLikeHtml(bootstrapBody)) return Pair(null, "Session token expired or invalid")
-            AppLogger.d("bootstrap response: ${bootstrapBody.take(500)}")
+            AppLogger.d("bootstrap response: ${bootstrapBody.take(1500)}")
 
             val bootstrapAdapter = moshi.adapter(BootstrapResponse::class.java)
             val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (e: Exception) {
@@ -230,11 +236,14 @@ class ClaudeAiApiClient {
                 ) return Pair(parsed, null)
             }
 
-            // Try embedded limits from memberships list
-            val membershipLimits = bootstrap?.memberships?.firstOrNull()?.let {
+            // Try embedded limits from memberships list (both top-level and nested in account)
+            val membershipsList = bootstrap?.memberships
+                ?: bootstrap?.account?.memberships
+            val membershipLimits = membershipsList?.firstOrNull()?.let {
                 it.membershipLimits ?: it.limits
             }
             if (membershipLimits != null) {
+                AppLogger.d("membership embedded limits: session=${membershipLimits.session?.percentUsed} weekly=${membershipLimits.weekly?.allModels?.percentUsed}")
                 val parsed = buildClaudeUsageData(membershipLimits)
                 if (parsed.sessionResetAtMs > 0 || parsed.weeklyResetAtMs > 0
                     || parsed.sessionPercent > 0 || parsed.weeklyPercent > 0

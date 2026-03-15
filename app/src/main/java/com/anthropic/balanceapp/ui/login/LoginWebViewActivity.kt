@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.Message
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -72,6 +74,9 @@ class LoginWebViewActivity : ComponentActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+            }
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -120,15 +125,14 @@ class LoginWebViewActivity : ComponentActivity() {
                     AppLogger.d("onCloseWindow: removing popup WebView")
                     frame.removeView(window)
                     window.destroy()
+                    // OAuth popup closed — cookie may now be set
+                    tryExtractSessionToken("https://claude.ai/")
                 }
             }
         }
     }
 
     private fun tryExtractSessionToken(url: String) {
-        val host = try { android.net.Uri.parse(url).host } catch (_: Exception) { null } ?: return
-        if (!host.contains("claude.ai")) return
-
         val cookieString = CookieManager.getInstance().getCookie("https://claude.ai")
         val token = cookieString
             ?.split(";")
@@ -137,7 +141,7 @@ class LoginWebViewActivity : ComponentActivity() {
             ?.removePrefix("sessionKey=")
             ?.trim()
 
-        AppLogger.d("claude.ai page: $url | sessionKey=${if (token != null) "found (len=${token.length})" else "not found"}")
+        AppLogger.d("page: $url | sessionKey=${if (token != null) "found (len=${token.length})" else "not found"}")
 
         if (!token.isNullOrBlank()) {
             CookieManager.getInstance().flush()
