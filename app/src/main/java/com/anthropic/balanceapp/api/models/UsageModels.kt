@@ -90,7 +90,8 @@ data class BootstrapResponse(
 @JsonClass(generateAdapter = true)
 data class BootstrapAccount(
     @Json(name = "membership_limits") val membershipLimits: MembershipLimitsResponse? = null,
-    @Json(name = "limits") val limits: MembershipLimitsResponse? = null
+    @Json(name = "limits") val limits: MembershipLimitsResponse? = null,
+    @Json(name = "memberships") val memberships: List<BootstrapMembership>? = null
 )
 
 @JsonClass(generateAdapter = true)
