@@ -8,6 +8,7 @@ import com.anthropic.balanceapp.api.models.MembershipLimitsResponse
 import com.anthropic.balanceapp.api.models.OrgLimitsResponse
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
@@ -167,7 +168,8 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    parseMembershipLimits(body)
+                    Log.d("BalanceApp", "account_limits response: $body")
+                    parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 ->
                     throw SessionExpiredException("Session token expired or invalid")
@@ -187,7 +189,8 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    parseMembershipLimits(body)
+                    Log.d("BalanceApp", "membership_limits response: $body")
+                    parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 -> {
                     throw SessionExpiredException("Session token expired or invalid")
@@ -210,6 +213,7 @@ class ClaudeAiApiClient {
             }
             val bootstrapBody = bootstrapResponse.body()?.string() ?: return Pair(null, "Empty bootstrap response")
             if (looksLikeHtml(bootstrapBody)) return Pair(null, "Session token expired or invalid")
+            Log.d("BalanceApp", "bootstrap response: $bootstrapBody")
 
             val bootstrapAdapter = moshi.adapter(BootstrapResponse::class.java)
             val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (e: Exception) {
@@ -276,6 +280,9 @@ class ClaudeAiApiClient {
             Pair(null, "Unexpected error: ${e.localizedMessage}")
         }
     }
+
+    private fun ClaudeUsageData.hasData(): Boolean =
+        sessionPercent > 0 || weeklyPercent > 0 || sessionResetAtMs > 0 || weeklyResetAtMs > 0
 
     private fun parseMembershipLimits(json: String): ClaudeUsageData? {
         return try {
