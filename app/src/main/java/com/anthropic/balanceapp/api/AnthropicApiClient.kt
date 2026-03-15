@@ -260,20 +260,26 @@ class ClaudeAiApiClient {
             val orgResponse = service.getOrgLimits(cookie, orgId = orgId)
             if (orgResponse.isSuccessful) {
                 val orgBody = orgResponse.body()?.string() ?: return Pair(null, "Empty org limits response")
+                AppLogger.d("org limits response: ${orgBody.take(500)}")
                 if (!looksLikeHtml(orgBody)) {
                     val result = parseOrgLimits(orgBody)
                     if (result != null) return Pair(result, null)
                 }
+            } else {
+                AppLogger.w("org limits HTTP ${orgResponse.code()}")
             }
 
             // Try org rate_limits endpoint as final fallback
             val rateResponse = service.getOrgRateLimits(cookie, orgId = orgId)
             if (rateResponse.isSuccessful) {
                 val rateBody = rateResponse.body()?.string() ?: return Pair(null, "Empty rate limits response")
+                AppLogger.d("org rate_limits response: ${rateBody.take(500)}")
                 if (!looksLikeHtml(rateBody)) {
                     val result = parseOrgLimits(rateBody)
                     if (result != null) return Pair(result, null)
                 }
+            } else {
+                AppLogger.w("org rate_limits HTTP ${rateResponse.code()}")
             }
 
             val orgCode = orgResponse.code()

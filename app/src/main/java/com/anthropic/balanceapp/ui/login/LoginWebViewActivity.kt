@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Message
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -21,8 +22,10 @@ class LoginWebViewActivity : ComponentActivity() {
 
     companion object {
         const val RESULT_SESSION_TOKEN = "session_token"
+        private const val UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     }
 
+    private lateinit var frame: FrameLayout
     private lateinit var webView: WebView
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -30,59 +33,16 @@ class LoginWebViewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
-        val frame = FrameLayout(this)
+        frame = FrameLayout(this)
         frame.setBackgroundColor(Color.parseColor("#1A1A1A"))
 
         val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 8
-            )
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 8)
             isIndeterminate = false
         }
 
-        webView = WebView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                databaseEnabled = true
-                loadWithOverviewMode = true
-                useWideViewPort = true
-                setSupportZoom(true)
-                builtInZoomControls = false
-                // Use a full Chrome user agent — Google OAuth blocks embedded WebViews
-                // that expose the "wv" (WebView) indicator in the default UA string.
-                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                @Suppress("DEPRECATION")
-                saveFormData = true
-                @Suppress("DEPRECATION")
-                savePassword = true
-            }
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView, url: String) {
-                    super.onPageFinished(view, url)
-                    AppLogger.d("WebView page finished: $url")
-                    progress.visibility = android.view.View.GONE
-                    tryExtractSessionToken(url)
-                }
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    // Let the WebView handle all claude.ai navigation
-                    return false
-                }
-            }
-            webChromeClient = object : android.webkit.WebChromeClient() {
-                override fun onProgressChanged(view: WebView, newProgress: Int) {
-                    progress.progress = newProgress
-                    progress.visibility = if (newProgress < 100) android.view.View.VISIBLE
-                    else android.view.View.GONE
-                }
-            }
-        }
+        webView = buildWebView(progress)
 
-        // Accept cookies
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
@@ -92,7 +52,6 @@ class LoginWebViewActivity : ComponentActivity() {
         frame.addView(progress)
         setContentView(frame)
 
-        // Handle back press — navigate back in WebView or cancel
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) webView.goBack()
@@ -104,6 +63,66 @@ class LoginWebViewActivity : ComponentActivity() {
         })
 
         webView.loadUrl("https://claude.ai/login")
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun buildWebView(progress: ProgressBar? = null): WebView {
+        return WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                setSupportMultipleWindows(true)
+                javaScriptCanOpenWindowsAutomatically = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
+                setSupportZoom(true)
+                builtInZoomControls = false
+                userAgentString = UA
+                @Suppress("DEPRECATION") saveFormData = true
+                @Suppress("DEPRECATION") savePassword = true
+            }
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    AppLogger.d("WebView page finished: $url")
+                    progress?.visibility = android.view.View.GONE
+                    tryExtractSessionToken(url)
+                }
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
+            }
+            webChromeClient = object : android.webkit.WebChromeClient() {
+                override fun onProgressChanged(view: WebView, newProgress: Int) {
+                    progress?.progress = newProgress
+                    progress?.visibility = if (newProgress < 100) android.view.View.VISIBLE
+                    else android.view.View.GONE
+                }
+
+                // Handle window.open() — required for Google OAuth popup flow
+                override fun onCreateWindow(
+                    view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message
+                ): Boolean {
+                    AppLogger.d("onCreateWindow: creating popup WebView")
+                    val popup = buildWebView()
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(popup, true)
+                    frame.addView(popup)
+                    val transport = resultMsg.obj as WebView.WebViewTransport
+                    transport.webView = popup
+                    resultMsg.sendToTarget()
+                    return true
+                }
+
+                override fun onCloseWindow(window: WebView) {
+                    AppLogger.d("onCloseWindow: removing popup WebView")
+                    frame.removeView(window)
+                    window.destroy()
+                }
+            }
+        }
     }
 
     private fun tryExtractSessionToken(url: String) {
