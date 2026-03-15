@@ -168,7 +168,7 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    AppLogger.d("account_limits response: $body")
+                    AppLogger.d("account_limits response: ${body.take(500)}")
                     parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 ->
@@ -189,7 +189,7 @@ class ClaudeAiApiClient {
                 response.isSuccessful -> {
                     val body = response.body()?.string() ?: return null
                     if (looksLikeHtml(body)) return null
-                    AppLogger.d("membership_limits response: $body")
+                    AppLogger.d("membership_limits response: ${body.take(500)}")
                     parseMembershipLimits(body)?.takeIf { it.hasData() }
                 }
                 response.code() == 401 || response.code() == 403 -> {
@@ -213,7 +213,7 @@ class ClaudeAiApiClient {
             }
             val bootstrapBody = bootstrapResponse.body()?.string() ?: return Pair(null, "Empty bootstrap response")
             if (looksLikeHtml(bootstrapBody)) return Pair(null, "Session token expired or invalid")
-            AppLogger.d("bootstrap response: $bootstrapBody")
+            AppLogger.d("bootstrap response: ${bootstrapBody.take(500)}")
 
             val bootstrapAdapter = moshi.adapter(BootstrapResponse::class.java)
             val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (e: Exception) {
