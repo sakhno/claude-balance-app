@@ -116,6 +116,29 @@ data class BootstrapMembership(
     @Json(name = "current_usage") val currentUsage: MembershipLimitsResponse? = null
 )
 
+// ─── Org usage response (api/organizations/{id}/usage) ───────────────────────
+
+@JsonClass(generateAdapter = true)
+data class OrgUsageResponse(
+    @Json(name = "five_hour") val fiveHour: OrgUsagePeriod? = null,
+    @Json(name = "seven_day") val sevenDay: OrgUsagePeriod? = null,
+    @Json(name = "extra_usage") val extraUsage: OrgExtraUsage? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OrgUsagePeriod(
+    @Json(name = "utilization") val utilization: Double? = null,
+    @Json(name = "resets_at") val resetsAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OrgExtraUsage(
+    @Json(name = "is_enabled") val isEnabled: Boolean? = null,
+    @Json(name = "monthly_limit") val monthlyLimit: Int? = null,
+    @Json(name = "used_credits") val usedCredits: Double? = null,
+    @Json(name = "utilization") val utilization: Double? = null
+)
+
 // ─── Org limits response ─────────────────────────────────────────────────────
 
 @JsonClass(generateAdapter = true)

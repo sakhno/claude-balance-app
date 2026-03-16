@@ -6,6 +6,8 @@ import com.anthropic.balanceapp.api.models.BootstrapResponse
 import com.anthropic.balanceapp.api.models.ClaudeUsageData
 import com.anthropic.balanceapp.api.models.MembershipLimitsResponse
 import com.anthropic.balanceapp.api.models.OrgLimitsResponse
+import com.anthropic.balanceapp.api.models.OrgUsageResponse
+import kotlin.math.roundToInt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.anthropic.balanceapp.logging.AppLogger
@@ -48,6 +50,13 @@ interface ClaudeAiService {
 
     @GET("api/organizations/{orgId}/limits")
     suspend fun getOrgLimits(
+        @Header("Cookie") cookie: String,
+        @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)",
+        @Path("orgId") orgId: String
+    ): Response<ResponseBody>
+
+    @GET("api/organizations/{orgId}/usage")
+    suspend fun getOrgUsage(
         @Header("Cookie") cookie: String,
         @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)",
         @Path("orgId") orgId: String
@@ -276,7 +285,20 @@ class ClaudeAiApiClient {
                 ?: bootstrap?.organizations?.firstOrNull()?.id
                 // Personal accounts have no org — return empty data (no usage limits to show)
                 ?: return Pair(ClaudeUsageData(fetchedAtMs = System.currentTimeMillis(), dataUnavailable = true), null)
-            AppLogger.d("Fetching org limits for orgId=$orgId")
+            AppLogger.d("Fetching org usage for orgId=$orgId")
+
+            // Try new usage endpoint first (five_hour / seven_day shape)
+            val usageResponse = service.getOrgUsage(cookie, orgId = orgId)
+            if (usageResponse.isSuccessful) {
+                val usageBody = usageResponse.body()?.string() ?: ""
+                AppLogger.d("org usage response: ${usageBody.take(500)}")
+                if (!looksLikeHtml(usageBody)) {
+                    val result = parseOrgUsage(usageBody)
+                    if (result != null) return Pair(result, null)
+                }
+            } else {
+                AppLogger.d("org usage HTTP ${usageResponse.code()}")
+            }
 
             // Try org limits endpoint
             val orgResponse = service.getOrgLimits(cookie, orgId = orgId)
@@ -325,6 +347,25 @@ class ClaudeAiApiClient {
             val adapter = moshi.adapter(MembershipLimitsResponse::class.java)
             val dto = adapter.fromJson(json) ?: return null
             buildClaudeUsageData(dto)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseOrgUsage(json: String): ClaudeUsageData? {
+        return try {
+            val adapter = moshi.adapter(OrgUsageResponse::class.java)
+            val dto = adapter.fromJson(json) ?: return null
+            val sessionResetAtMs = parseIso8601ToMs(dto.fiveHour?.resetsAt)
+            val weeklyResetAtMs = parseIso8601ToMs(dto.sevenDay?.resetsAt)
+            if (sessionResetAtMs == 0L && weeklyResetAtMs == 0L) return null
+            ClaudeUsageData(
+                sessionPercent = dto.fiveHour?.utilization?.roundToInt() ?: 0,
+                sessionResetAtMs = sessionResetAtMs,
+                weeklyPercent = dto.sevenDay?.utilization?.roundToInt() ?: 0,
+                weeklyResetAtMs = weeklyResetAtMs,
+                fetchedAtMs = System.currentTimeMillis()
+            )
         } catch (_: Exception) {
             null
         }
