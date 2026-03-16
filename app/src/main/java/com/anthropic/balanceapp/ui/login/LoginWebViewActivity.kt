@@ -58,13 +58,31 @@ class LoginWebViewActivity : ComponentActivity() {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) webView.goBack()
                 else {
-                    setResult(Activity.RESULT_CANCELED)
+                    // User may have already logged in (SPA navigation left us on the chat
+                    // page with a valid cookie). Return the token instead of CANCELED so
+                    // the session isn't lost when the user presses back.
+                    val cookieString = CookieManager.getInstance().getCookie("https://claude.ai")
+                    val token = cookieString
+                        ?.split(";")
+                        ?.map { it.trim() }
+                        ?.firstOrNull { it.startsWith("sessionKey=") }
+                        ?.removePrefix("sessionKey=")
+                        ?.trim()
+                    if (!token.isNullOrBlank()) {
+                        AppLogger.d("Back pressed — returning existing session token")
+                        CookieManager.getInstance().flush()
+                        val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
+                        setResult(Activity.RESULT_OK, result)
+                    } else {
+                        setResult(Activity.RESULT_CANCELED)
+                    }
                     finish()
                 }
             }
         })
 
         webView.loadUrl("https://claude.ai/login")
+        webView.requestFocus()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -96,6 +114,14 @@ class LoginWebViewActivity : ComponentActivity() {
                     super.onPageFinished(view, url)
                     AppLogger.d("WebView page finished: $url")
                     progress?.visibility = android.view.View.GONE
+                    tryExtractSessionToken(url)
+                }
+                // Fired on SPA pushState/replaceState navigation (no full page reload).
+                // Claude.ai is a React SPA — after login it navigates via pushState so
+                // onPageFinished never fires again; we must check the cookie here too.
+                override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    AppLogger.d("WebView URL change: $url")
                     tryExtractSessionToken(url)
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false

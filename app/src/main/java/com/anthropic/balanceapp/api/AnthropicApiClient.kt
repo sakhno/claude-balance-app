@@ -226,8 +226,19 @@ class ClaudeAiApiClient {
                 return Pair(null, "Could not parse bootstrap response")
             }
 
+            // Log where usage fields appear in the bootstrap body (helps debug new API shapes)
+            listOf("percent_used", "percentage_used", "reset_at", "resets_at").forEach { kw ->
+                val idx = bootstrapBody.indexOf("\"$kw\"")
+                if (idx >= 0) {
+                    AppLogger.d("bootstrap keyword '$kw' at pos $idx: ...${bootstrapBody.substring(maxOf(0, idx - 60), minOf(bootstrapBody.length, idx + 120))}...")
+                }
+            }
+
             // Try embedded limits from bootstrap account object
-            val accountLimits = bootstrap?.account?.membershipLimits ?: bootstrap?.account?.limits
+            val accountLimits = bootstrap?.account?.membershipLimits
+                ?: bootstrap?.account?.limits
+                ?: bootstrap?.account?.rateLimitUsage
+                ?: bootstrap?.account?.usage
             if (accountLimits != null) {
                 val parsed = buildClaudeUsageData(accountLimits)
                 // Accept even 0% — it's valid at the start of a period
@@ -236,11 +247,11 @@ class ClaudeAiApiClient {
                 ) return Pair(parsed, null)
             }
 
-            // Try embedded limits from memberships list (both top-level and nested in account)
+            // Try embedded limits from memberships list — check ALL memberships, not just first
             val membershipsList = bootstrap?.memberships
                 ?: bootstrap?.account?.memberships
-            val membershipLimits = membershipsList?.firstOrNull()?.let {
-                it.membershipLimits ?: it.limits
+            val membershipLimits = membershipsList?.firstNotNullOfOrNull { m ->
+                m.membershipLimits ?: m.limits ?: m.rateLimitUsage ?: m.usage ?: m.currentUsage
             }
             if (membershipLimits != null) {
                 AppLogger.d("membership embedded limits: session=${membershipLimits.session?.percentUsed} weekly=${membershipLimits.weekly?.allModels?.percentUsed}")
@@ -264,7 +275,7 @@ class ClaudeAiApiClient {
                 ?: bootstrap?.organizations?.firstOrNull()?.uuid
                 ?: bootstrap?.organizations?.firstOrNull()?.id
                 // Personal accounts have no org — return empty data (no usage limits to show)
-                ?: return Pair(ClaudeUsageData(fetchedAtMs = System.currentTimeMillis()), null)
+                ?: return Pair(ClaudeUsageData(fetchedAtMs = System.currentTimeMillis(), dataUnavailable = true), null)
             AppLogger.d("Fetching org limits for orgId=$orgId")
 
             // Try org limits endpoint
@@ -293,9 +304,14 @@ class ClaudeAiApiClient {
                 AppLogger.w("org rate_limits HTTP ${rateResponse.code()}")
             }
 
+            // Bootstrap returned 200 so the session is valid, but no endpoint exposed usage
+            // percentages — this is expected for personal Claude Pro accounts
+            // (rate_limit_tier=default_claude_ai). Return success with zeros so the worker
+            // doesn't retry endlessly and the UI shows no-data rather than an error.
             val orgCode = orgResponse.code()
             val rateCode = rateResponse.code()
-            Pair(null, "All usage endpoints failed (limits: HTTP $orgCode, rate_limits: HTTP $rateCode)")
+            AppLogger.d("No usage data available from any endpoint (limits: HTTP $orgCode, rate_limits: HTTP $rateCode) — returning empty data for personal account")
+            Pair(ClaudeUsageData(fetchedAtMs = System.currentTimeMillis(), dataUnavailable = true), null)
         } catch (e: Exception) {
             Pair(null, "Unexpected error: ${e.localizedMessage}")
         }

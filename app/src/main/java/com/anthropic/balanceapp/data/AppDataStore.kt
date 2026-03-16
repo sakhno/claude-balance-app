@@ -59,6 +59,7 @@ class AppDataStore(private val context: Context) {
         val CLAUDE_WEEKLY_RESET_AT_MS = longPreferencesKey("claude_weekly_reset_at_ms")
         val CLAUDE_FETCHED_AT_MS = longPreferencesKey("claude_fetched_at_ms")
         val CLAUDE_LAST_ERROR = stringPreferencesKey("claude_last_error")
+        val CLAUDE_DATA_UNAVAILABLE = booleanPreferencesKey("claude_data_unavailable")
 
         // Cached ApiBalance
         val BALANCE_REMAINING_USD = doublePreferencesKey("balance_remaining_usd")
@@ -98,7 +99,8 @@ class AppDataStore(private val context: Context) {
                 weeklyPercent = prefs[CLAUDE_WEEKLY_PERCENT] ?: 0,
                 weeklyResetAtMs = prefs[CLAUDE_WEEKLY_RESET_AT_MS] ?: 0L,
                 fetchedAtMs = prefs[CLAUDE_FETCHED_AT_MS] ?: 0L,
-                lastError = prefs[CLAUDE_LAST_ERROR] ?: ""
+                lastError = prefs[CLAUDE_LAST_ERROR] ?: "",
+                dataUnavailable = prefs[CLAUDE_DATA_UNAVAILABLE] ?: false
             )
         }
 
@@ -138,6 +140,7 @@ class AppDataStore(private val context: Context) {
             prefs[CLAUDE_WEEKLY_RESET_AT_MS] = data.weeklyResetAtMs
             prefs[CLAUDE_FETCHED_AT_MS] = System.currentTimeMillis()
             prefs[CLAUDE_LAST_ERROR] = ""
+            prefs[CLAUDE_DATA_UNAVAILABLE] = data.dataUnavailable
         }
     }
 

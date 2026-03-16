@@ -14,7 +14,10 @@ data class ClaudeUsageData(
     val weeklyPercent: Int = 0,
     val weeklyResetAtMs: Long = 0L,     // epoch ms when weekly resets
     val fetchedAtMs: Long = 0L,
-    val lastError: String = ""
+    val lastError: String = "",
+    // True when the session is valid but this account type doesn't expose usage percentages
+    // (e.g. personal Claude Pro with rate_limit_tier=default_claude_ai).
+    val dataUnavailable: Boolean = false
 )
 
 /**
@@ -91,6 +94,8 @@ data class BootstrapResponse(
 data class BootstrapAccount(
     @Json(name = "membership_limits") val membershipLimits: MembershipLimitsResponse? = null,
     @Json(name = "limits") val limits: MembershipLimitsResponse? = null,
+    @Json(name = "rate_limit_usage") val rateLimitUsage: MembershipLimitsResponse? = null,
+    @Json(name = "usage") val usage: MembershipLimitsResponse? = null,
     @Json(name = "memberships") val memberships: List<BootstrapMembership>? = null
 )
 
@@ -104,7 +109,11 @@ data class BootstrapOrganization(
 data class BootstrapMembership(
     @Json(name = "organization") val organization: BootstrapOrganization? = null,
     @Json(name = "membership_limits") val membershipLimits: MembershipLimitsResponse? = null,
-    @Json(name = "limits") val limits: MembershipLimitsResponse? = null
+    @Json(name = "limits") val limits: MembershipLimitsResponse? = null,
+    // Personal Claude Pro accounts may use these field names instead
+    @Json(name = "rate_limit_usage") val rateLimitUsage: MembershipLimitsResponse? = null,
+    @Json(name = "usage") val usage: MembershipLimitsResponse? = null,
+    @Json(name = "current_usage") val currentUsage: MembershipLimitsResponse? = null
 )
 
 // ─── Org limits response ─────────────────────────────────────────────────────

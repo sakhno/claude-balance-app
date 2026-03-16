@@ -400,6 +400,18 @@ fun UsageSummaryCard(usage: ClaudeUsageData) {
         return
     }
 
+    if (usage.dataUnavailable) {
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "Usage percentages are not available via the API for personal Claude Pro accounts.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+        return
+    }
+
     val lastUpdated = remember(usage.fetchedAtMs) {
         SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(usage.fetchedAtMs))
     }

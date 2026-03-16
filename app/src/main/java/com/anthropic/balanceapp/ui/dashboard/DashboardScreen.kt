@@ -148,6 +148,16 @@ fun ClaudeUsageCard(usage: ClaudeUsageData) {
                 return@Column
             }
 
+            if (usage.dataUnavailable) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Usage percentages are not available for personal Claude Pro accounts via the API.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                return@Column
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
 
             Row(

@@ -34,7 +34,8 @@
             android:name=".ui.login.LoginWebViewActivity"
             android:exported="false"
             android:label="Sign in to Claude.ai"
-            android:theme="@style/Theme.BalanceApp" />
+            android:theme="@style/Theme.BalanceApp"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Widget Receiver -->
         <receiver
