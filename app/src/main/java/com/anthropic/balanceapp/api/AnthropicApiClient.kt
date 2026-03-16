@@ -219,7 +219,7 @@ class ClaudeAiApiClient {
             }
             val bootstrapBody = bootstrapResponse.body()?.string() ?: return Pair(null, "Empty bootstrap response")
             if (looksLikeHtml(bootstrapBody)) return Pair(null, "Session token expired or invalid")
-            AppLogger.d("bootstrap response: ${bootstrapBody.take(1500)}")
+            AppLogger.d("bootstrap response (${bootstrapBody.length} chars): ${bootstrapBody.take(3000)}")
 
             val bootstrapAdapter = moshi.adapter(BootstrapResponse::class.java)
             val bootstrap = try { bootstrapAdapter.fromJson(bootstrapBody) } catch (e: Exception) {
@@ -248,6 +248,8 @@ class ClaudeAiApiClient {
                 if (parsed.sessionResetAtMs > 0 || parsed.weeklyResetAtMs > 0
                     || parsed.sessionPercent > 0 || parsed.weeklyPercent > 0
                 ) return Pair(parsed, null)
+            } else {
+                AppLogger.d("bootstrap: no embedded membership limits found (accountLimits=$accountLimits, membershipsList size=${membershipsList?.size})")
             }
 
             // Extract org ID — prefer UUID over numeric id (API endpoints expect UUID)
@@ -272,7 +274,7 @@ class ClaudeAiApiClient {
                 AppLogger.d("org limits response: ${orgBody.take(500)}")
                 if (!looksLikeHtml(orgBody)) {
                     val result = parseOrgLimits(orgBody)
-                    if (result != null) return Pair(result, null)
+                    if (result != null && result.hasData()) return Pair(result, null)
                 }
             } else {
                 AppLogger.w("org limits HTTP ${orgResponse.code()}")
@@ -285,7 +287,7 @@ class ClaudeAiApiClient {
                 AppLogger.d("org rate_limits response: ${rateBody.take(500)}")
                 if (!looksLikeHtml(rateBody)) {
                     val result = parseOrgLimits(rateBody)
-                    if (result != null) return Pair(result, null)
+                    if (result != null && result.hasData()) return Pair(result, null)
                 }
             } else {
                 AppLogger.w("org rate_limits HTTP ${rateResponse.code()}")
