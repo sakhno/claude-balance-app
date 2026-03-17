@@ -2,7 +2,7 @@ package com.anthropic.balanceapp.worker
 
 import android.content.Context
 import androidx.work.*
-import com.anthropic.balanceapp.api.AnthropicBalanceClient
+import com.anthropic.balanceapp.api.PlatformCreditsClient
 import com.anthropic.balanceapp.api.ApiResult
 import com.anthropic.balanceapp.api.ClaudeAiApiClient
 import com.anthropic.balanceapp.data.AppDataStore
@@ -18,7 +18,7 @@ class SyncWorker(
 
     private val dataStore = AppDataStore(appContext)
     private val claudeClient = ClaudeAiApiClient()
-    private val balanceClient = AnthropicBalanceClient()
+    private val balanceClient = PlatformCreditsClient()
     private val alertManager = AlertManager(appContext)
 
     override suspend fun doWork(): Result {
@@ -64,10 +64,10 @@ class SyncWorker(
             AppLogger.d("No Claude session token configured, skipping usage fetch")
         }
 
-        // ── 2. Fetch API billing balance ──────────────────────────────────────
-        if (settings.anthropicApiKey.isNotBlank()) {
-            AppLogger.d("Fetching API billing balance…")
-            when (val result = balanceClient.fetchBalance(settings.anthropicApiKey)) {
+        // ── 2. Fetch prepaid credit balance from platform.claude.com ─────────
+        if (settings.claudeSessionToken.isNotBlank()) {
+            AppLogger.d("Fetching prepaid credit balance…")
+            when (val result = balanceClient.fetchBalance(settings.claudeSessionToken)) {
                 is ApiResult.Success -> {
                     val balance = result.data
                     AppLogger.d("Balance OK — remaining=\$${balance.remainingUsd} pending=\$${balance.pendingUsd}")
@@ -86,7 +86,7 @@ class SyncWorker(
                 is ApiResult.Error -> {
                     AppLogger.w("Balance error (code=${result.code}): ${result.message}")
                     dataStore.saveApiBalanceError(result.message)
-                    // 401/403 = auth error, 404 = billing not available for this key — all permanent, no retry
+                    // 401/403/404 = permanent failures, no retry
                     if (result.code != 401 && result.code != 403 && result.code != 404) {
                         anyRetryNeeded = true
                     }

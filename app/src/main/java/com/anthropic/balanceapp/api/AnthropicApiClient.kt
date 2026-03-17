@@ -7,6 +7,9 @@ import com.anthropic.balanceapp.api.models.ClaudeUsageData
 import com.anthropic.balanceapp.api.models.MembershipLimitsResponse
 import com.anthropic.balanceapp.api.models.OrgLimitsResponse
 import com.anthropic.balanceapp.api.models.OrgUsageResponse
+import com.anthropic.balanceapp.api.models.PlatformCreditsResponse
+import com.anthropic.balanceapp.api.models.PlatformOrganization
+import com.squareup.moshi.Types
 import kotlin.math.roundToInt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -73,6 +76,23 @@ interface ClaudeAiService {
     suspend fun getBootstrap(
         @Header("Cookie") cookie: String,
         @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)"
+    ): Response<ResponseBody>
+}
+
+interface PlatformClaudeService {
+    @GET("api/organizations")
+    suspend fun getOrganizations(
+        @Header("Cookie") cookie: String,
+        @Header("anthropic-client-platform") platform: String = "web_console",
+        @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)"
+    ): Response<ResponseBody>
+
+    @GET("api/organizations/{orgId}/prepaid/credits")
+    suspend fun getPrepaidCredits(
+        @Header("Cookie") cookie: String,
+        @Header("anthropic-client-platform") platform: String = "web_console",
+        @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)",
+        @Path("orgId") orgId: String
     ): Response<ResponseBody>
 }
 
@@ -590,6 +610,76 @@ class AnthropicBalanceClient {
             ApiResult.NetworkError
         } catch (e: Exception) {
             ApiResult.Error("Unexpected error: ${e.localizedMessage}")
+        }
+    }
+}
+
+// ─── PlatformCreditsClient ────────────────────────────────────────────────────
+
+/**
+ * Fetches prepaid credit balance from platform.claude.com using the same
+ * sessionKey cookie as claude.ai.
+ */
+class PlatformCreditsClient {
+
+    private val moshi = buildMoshi()
+
+    private val service: PlatformClaudeService by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://platform.claude.com/")
+            .client(buildOkHttpClient())
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(PlatformClaudeService::class.java)
+    }
+
+    suspend fun fetchBalance(sessionToken: String): ApiResult<ApiBalance> {
+        val cookie = "sessionKey=$sessionToken"
+        return try {
+            // 1. Discover the prepaid org UUID
+            val orgUuid = fetchPrepaidOrgUuid(cookie)
+                ?: return ApiResult.Error("No prepaid org found", 404)
+
+            // 2. Fetch credits for that org
+            val response = service.getPrepaidCredits(cookie, orgId = orgUuid)
+            if (!response.isSuccessful) {
+                return ApiResult.Error("Credits fetch failed: ${response.code()}", response.code())
+            }
+            val body = response.body()?.string()
+                ?: return ApiResult.Error("Empty credits response")
+            val adapter = moshi.adapter(PlatformCreditsResponse::class.java)
+            val dto = adapter.fromJson(body)
+                ?: return ApiResult.Error("Could not parse credits response")
+
+            val remaining = dto.amount ?: 0.0
+            val pendingCents = dto.pendingInvoiceAmountCents ?: 0L
+            ApiResult.Success(ApiBalance(
+                remainingUsd = remaining,
+                pendingUsd = pendingCents / 100.0,
+                fetchedAtMs = System.currentTimeMillis()
+            ))
+        } catch (e: java.net.UnknownHostException) {
+            ApiResult.NetworkError
+        } catch (e: java.net.SocketTimeoutException) {
+            ApiResult.Error("Request timed out")
+        } catch (e: Exception) {
+            ApiResult.Error("Unexpected error: ${e.localizedMessage}")
+        }
+    }
+
+    private suspend fun fetchPrepaidOrgUuid(cookie: String): String? {
+        return try {
+            val response = service.getOrganizations(cookie)
+            if (!response.isSuccessful) return null
+            val body = response.body()?.string() ?: return null
+            val type = Types.newParameterizedType(List::class.java, PlatformOrganization::class.java)
+            val adapter = moshi.adapter<List<PlatformOrganization>>(type)
+            val orgs = adapter.fromJson(body) ?: return null
+            // Prefer prepaid org; fall back to first org
+            orgs.firstOrNull { it.billingType == "prepaid" }?.uuid
+                ?: orgs.firstOrNull()?.uuid
+        } catch (_: Exception) {
+            null
         }
     }
 }

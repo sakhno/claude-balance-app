@@ -148,6 +148,21 @@ data class OrgLimitsResponse(
     @Json(name = "limits") val limits: MembershipLimitsResponse? = null
 )
 
+// ─── Platform.claude.com DTOs ─────────────────────────────────────────────────
+
+@JsonClass(generateAdapter = true)
+data class PlatformOrganization(
+    @Json(name = "uuid") val uuid: String? = null,
+    @Json(name = "billing_type") val billingType: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class PlatformCreditsResponse(
+    @Json(name = "amount") val amount: Double? = null,
+    @Json(name = "currency") val currency: String? = null,
+    @Json(name = "pending_invoice_amount_cents") val pendingInvoiceAmountCents: Long? = null
+)
+
 // ─── Shared error DTO ─────────────────────────────────────────────────────────
 
 @JsonClass(generateAdapter = true)
