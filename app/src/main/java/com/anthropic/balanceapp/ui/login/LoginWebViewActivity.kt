@@ -24,6 +24,7 @@ class LoginWebViewActivity : ComponentActivity() {
 
     companion object {
         const val RESULT_SESSION_TOKEN = "session_token"
+        const val RESULT_ROUTING_HINT = "routing_hint"
         private const val UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     }
 
@@ -159,7 +160,8 @@ class LoginWebViewActivity : ComponentActivity() {
     }
 
     private fun tryExtractSessionToken(url: String) {
-        val cookieString = CookieManager.getInstance().getCookie("https://claude.ai")
+        val cm = CookieManager.getInstance()
+        val cookieString = cm.getCookie("https://claude.ai")
         val token = cookieString
             ?.split(";")
             ?.map { it.trim() }
@@ -170,8 +172,25 @@ class LoginWebViewActivity : ComponentActivity() {
         AppLogger.d("page: $url | sessionKey=${if (token != null) "found (len=${token.length})" else "not found"}")
 
         if (!token.isNullOrBlank()) {
-            CookieManager.getInstance().flush()
-            val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
+            // Check for routingHint in claude.ai cookies and platform.claude.com cookies
+            val routingHint = listOf("https://claude.ai", "https://platform.claude.com")
+                .flatMap { domain ->
+                    cm.getCookie(domain)
+                        ?.split(";")
+                        ?.map { it.trim() }
+                        ?: emptyList()
+                }
+                .firstOrNull { it.startsWith("routingHint=") }
+                ?.removePrefix("routingHint=")
+                ?.trim()
+
+            AppLogger.d("routingHint=${if (routingHint != null) "found (len=${routingHint.length})" else "not found"}")
+
+            cm.flush()
+            val result = Intent().apply {
+                putExtra(RESULT_SESSION_TOKEN, token)
+                if (!routingHint.isNullOrBlank()) putExtra(RESULT_ROUTING_HINT, routingHint)
+            }
             setResult(Activity.RESULT_OK, result)
             finish()
         }

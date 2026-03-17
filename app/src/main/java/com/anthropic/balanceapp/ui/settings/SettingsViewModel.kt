@@ -58,8 +58,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // ── Settings field updaters ───────────────────────────────────────────────
 
-    fun updateClaudeSessionToken(token: String) {
-        _uiState.update { it.copy(settings = it.settings.copy(claudeSessionToken = token)) }
+    fun updateClaudeSessionToken(token: String, routingHint: String? = null) {
+        _uiState.update {
+            it.copy(settings = it.settings.copy(
+                claudeSessionToken = token,
+                platformRoutingHint = routingHint ?: it.settings.platformRoutingHint
+            ))
+        }
     }
 
     fun updateIntervalMinutes(minutes: Int) {

@@ -159,53 +159,34 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
 
+    // Working area ~120×40dp — no room for labels, circles fill the height
     Row(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Session circle
-        Column(
+        Box(
             modifier = GlanceModifier.defaultWeight(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
-            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 38.dp)
-            Text(
-                text = "Session",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
-            )
+            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 40.dp)
         }
-
-        // Weekly circle
-        Column(
+        Box(
             modifier = GlanceModifier.defaultWeight(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
-            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 38.dp)
-            Text(
-                text = "Weekly",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
-            )
+            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 40.dp)
         }
-
-        // Balance
-        Column(
+        Box(
             modifier = GlanceModifier.defaultWeight(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
+                text = if (hasBalance) "\$${"%.0f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
                     color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                    fontSize = 18.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
-            )
-            Text(
-                text = "balance",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
         }
     }
@@ -307,11 +288,11 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
             )
         }
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.height(4.dp))
 
-        // Circles row
+        // Circles + balance row — circles 54dp so label+reset fits in ~116dp working height
         Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
@@ -319,16 +300,16 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 60.dp)
-                Spacer(modifier = GlanceModifier.height(3.dp))
+                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 54.dp)
+                Spacer(modifier = GlanceModifier.height(2.dp))
                 Text(
                     text = "Session",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
                 )
                 if (usage.sessionResetAtMs > 0) {
                     Text(
                         text = formatResetTime(usage.sessionResetAtMs),
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
                     )
                 }
             }
@@ -337,20 +318,20 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 60.dp)
-                Spacer(modifier = GlanceModifier.height(3.dp))
+                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 54.dp)
+                Spacer(modifier = GlanceModifier.height(2.dp))
                 Text(
                     text = "Weekly",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
                 )
                 if (usage.weeklyResetAtMs > 0) {
                     Text(
                         text = formatResetTime(usage.weeklyResetAtMs),
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
                     )
                 }
             }
-            // Balance column
+            // Balance column — vertically centered to match circle columns
             Column(
                 modifier = GlanceModifier.defaultWeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -358,26 +339,26 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             ) {
                 Text(
                     text = "Balance",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
                 )
-                Spacer(modifier = GlanceModifier.height(4.dp))
+                Spacer(modifier = GlanceModifier.height(3.dp))
                 Text(
                     text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                     style = TextStyle(
                         color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
                 Text(
                     text = "remaining",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
                 )
                 if (hasBalance) {
                     Spacer(modifier = GlanceModifier.height(2.dp))
                     Text(
                         text = "\$${"%.2f".format(balance.pendingUsd)} pending",
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
                     )
                 }
             }

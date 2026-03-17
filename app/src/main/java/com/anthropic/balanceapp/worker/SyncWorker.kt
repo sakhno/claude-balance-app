@@ -67,7 +67,10 @@ class SyncWorker(
         // ── 2. Fetch prepaid credit balance from platform.claude.com ─────────
         if (settings.claudeSessionToken.isNotBlank()) {
             AppLogger.d("Fetching prepaid credit balance…")
-            when (val result = balanceClient.fetchBalance(settings.claudeSessionToken)) {
+            when (val result = balanceClient.fetchBalance(
+                settings.claudeSessionToken,
+                settings.platformRoutingHint.takeIf { it.isNotBlank() }
+            )) {
                 is ApiResult.Success -> {
                     val balance = result.data
                     AppLogger.d("Balance OK — remaining=\$${balance.remainingUsd} pending=\$${balance.pendingUsd}")

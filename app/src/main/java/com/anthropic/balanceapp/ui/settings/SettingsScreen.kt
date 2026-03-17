@@ -83,9 +83,10 @@ fun SettingsScreen(
                 ) { result ->
                     if (result.resultCode == RESULT_OK) {
                         val token = result.data?.getStringExtra(LoginWebViewActivity.RESULT_SESSION_TOKEN)
+                        val routingHint = result.data?.getStringExtra(LoginWebViewActivity.RESULT_ROUTING_HINT)
                         if (!token.isNullOrBlank()) {
-                            viewModel.updateClaudeSessionToken(token)
-                            viewModel.validateSessionToken() // also saves on success
+                            viewModel.updateClaudeSessionToken(token, routingHint)
+                            viewModel.validateSessionToken()
                         }
                     }
                 }

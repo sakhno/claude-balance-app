@@ -635,19 +635,25 @@ class PlatformCreditsClient {
             .create(PlatformClaudeService::class.java)
     }
 
-    suspend fun fetchBalance(sessionToken: String): ApiResult<ApiBalance> {
-        val cookie = "sessionKey=$sessionToken"
+    suspend fun fetchBalance(sessionToken: String, routingHint: String? = null): ApiResult<ApiBalance> {
+        val cookie = buildString {
+            append("sessionKey=$sessionToken")
+            if (!routingHint.isNullOrBlank()) append("; routingHint=$routingHint")
+        }
         return try {
             // 1. Discover the prepaid org UUID
-            AppLogger.d("Platform: fetching org list…")
+            AppLogger.d("Platform: fetching org list… (routingHint=${if (routingHint != null) "set" else "missing"})")
             val orgUuid = fetchPrepaidOrgUuid(cookie)
             AppLogger.d("Platform: prepaid orgUuid=$orgUuid")
             orgUuid ?: return ApiResult.Error("No prepaid org found", 404)
 
-            // 2. Fetch credits for that org
-            val response = service.getPrepaidCredits(cookie, orgId = orgUuid)
+            // 2. Fetch credits for that org (include lastActiveOrg cookie for billing context)
+            val creditsCookie = "$cookie; lastActiveOrg=$orgUuid"
+            val response = service.getPrepaidCredits(creditsCookie, orgId = orgUuid)
             AppLogger.d("Platform: credits HTTP ${response.code()}")
             if (!response.isSuccessful) {
+                val errBody = response.errorBody()?.string() ?: ""
+                AppLogger.w("Platform: credits error body=$errBody")
                 return ApiResult.Error("Credits fetch failed: ${response.code()}", response.code())
             }
             val body = response.body()?.string()
