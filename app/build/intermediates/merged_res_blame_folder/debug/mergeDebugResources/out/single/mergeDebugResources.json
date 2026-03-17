@@ -1,0 +1,78 @@
+[
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-xhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-xxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-xxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/drawable_widget_background.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/drawable/widget_background.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/xml_backup_rules.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-mdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-mdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-hdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-hdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/layout_widget_initial_layout.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/layout/widget_initial_layout.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-xxxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.anthropic.balanceapp-main-75:/mipmap-xxxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/xml_data_extraction_rules.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.anthropic.balanceapp-debug-73:/xml_claude_widget_info.xml.flat",
+        "source": "com.anthropic.balanceapp-main-75:/xml/claude_widget_info.xml"
+    }
+]

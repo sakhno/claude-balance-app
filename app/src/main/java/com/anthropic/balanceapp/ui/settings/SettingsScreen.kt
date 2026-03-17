@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -70,7 +71,7 @@ fun SettingsScreen(
             if (settings.claudeSessionToken.isNotBlank()) {
                 UsageSummaryCard(usage = uiState.claudeUsage)
             }
-            if (settings.anthropicApiKey.isNotBlank()) {
+            if (settings.claudeSessionToken.isNotBlank()) {
                 BalanceSummaryCard(balance = uiState.apiBalance)
             }
 
@@ -173,67 +174,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Section 2: API Balance Tracking ──────────────────────────────
-            SectionCard(title = "API Balance Tracking") {
-                Text(
-                    text = "Requires an Admin API key with billing access (console.anthropic.com)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                var showKey by remember { mutableStateOf(false) }
-                OutlinedTextField(
-                    value = settings.anthropicApiKey,
-                    onValueChange = { viewModel.updateAnthropicApiKey(it) },
-                    label = { Text("Admin API Key") },
-                    placeholder = { Text("sk-ant-api03-...") },
-                    visualTransformation = if (showKey) VisualTransformation.None
-                    else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { showKey = !showKey }) {
-                            Icon(
-                                if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showKey) "Hide" else "Show"
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedButton(
-                    onClick = { viewModel.validateApiKey() },
-                    enabled = settings.anthropicApiKey.isNotBlank() && !uiState.isValidatingApiKey,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (uiState.isValidatingApiKey) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("Test connection")
-                    }
-                }
-
-                AnimatedVisibility(visible = uiState.apiKeyValidationResult != null) {
-                    uiState.apiKeyValidationResult?.let { result ->
-                        val isSuccess = result.startsWith("API key is valid")
-                        Text(
-                            text = result,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isSuccess) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            // ── Section 3: Widget Settings ────────────────────────────────────
+            // ── Section 2: Widget Settings ────────────────────────────────────
             SectionCard(title = "Widget Settings") {
                 Text(
                     text = "Update Interval",

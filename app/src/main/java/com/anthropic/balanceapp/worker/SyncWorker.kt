@@ -97,7 +97,7 @@ class SyncWorker(
                 }
             }
         } else {
-            AppLogger.d("No API key configured, skipping balance fetch")
+            AppLogger.d("No session token configured, skipping balance fetch")
         }
 
         // Update widget regardless of outcome so stale/error state is shown

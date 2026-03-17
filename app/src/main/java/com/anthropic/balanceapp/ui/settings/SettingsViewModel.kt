@@ -3,7 +3,6 @@ package com.anthropic.balanceapp.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.anthropic.balanceapp.api.AnthropicBalanceClient
 import com.anthropic.balanceapp.api.ApiResult
 import com.anthropic.balanceapp.api.ClaudeAiApiClient
 import com.anthropic.balanceapp.api.models.ApiBalance
@@ -24,10 +23,6 @@ data class SettingsUiState(
     val isValidatingSessionToken: Boolean = false,
     val sessionTokenValidationResult: String? = null,
 
-    // API key validation
-    val isValidatingApiKey: Boolean = false,
-    val apiKeyValidationResult: String? = null,
-
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val isSyncing: Boolean = false
@@ -37,7 +32,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val dataStore = AppDataStore(application)
     private val claudeClient = ClaudeAiApiClient()
-    private val balanceClient = AnthropicBalanceClient()
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -66,10 +60,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateClaudeSessionToken(token: String) {
         _uiState.update { it.copy(settings = it.settings.copy(claudeSessionToken = token)) }
-    }
-
-    fun updateAnthropicApiKey(key: String) {
-        _uiState.update { it.copy(settings = it.settings.copy(anthropicApiKey = key)) }
     }
 
     fun updateIntervalMinutes(minutes: Int) {
@@ -135,31 +125,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun validateApiKey() {
-        val key = _uiState.value.settings.anthropicApiKey
-        if (key.isBlank()) {
-            _uiState.update { it.copy(apiKeyValidationResult = "Please enter an API key") }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(isValidatingApiKey = true, apiKeyValidationResult = null)
-            }
-            val result = balanceClient.validateApiKey(key)
-            if (result is ApiResult.Success) {
-                dataStore.saveSettings(_uiState.value.settings)
-            }
-            val message = when (result) {
-                is ApiResult.Success -> "API key is valid!"
-                is ApiResult.Error -> "Invalid: ${result.message}"
-                is ApiResult.NetworkError -> "Network error — check connection"
-            }
-            _uiState.update {
-                it.copy(isValidatingApiKey = false, apiKeyValidationResult = message)
-            }
-        }
-    }
-
     // ── Save & sync ───────────────────────────────────────────────────────────
 
     fun saveSettings() {
@@ -189,7 +154,4 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(sessionTokenValidationResult = null) }
     }
 
-    fun clearApiKeyValidation() {
-        _uiState.update { it.copy(apiKeyValidationResult = null) }
-    }
 }

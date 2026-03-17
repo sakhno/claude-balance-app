@@ -2,10 +2,16 @@ package com.anthropic.balanceapp.widget
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,7 +79,7 @@ fun WidgetContent(
                 .background(GlanceTheme.colors.widgetBackground)
                 .cornerRadius(16.dp)
                 .clickable(actionRunCallback<OpenAppAction>())
-                .padding(if (isSmall) 10.dp else 14.dp)
+                .padding(if (isSmall) 10.dp else 12.dp)
         ) {
             when {
                 isSmall -> SmallWidgetLayout(usage = usage, balance = balance)
@@ -85,68 +91,121 @@ fun WidgetContent(
     }
 }
 
-// ─── Small (2×1): compact session/weekly + balance ───────────────────────────
+// ─── Circle progress indicator ────────────────────────────────────────────────
+
+fun createCircleBitmap(percent: Int, sizePx: Int, colorArgb: Int, hasData: Boolean): Bitmap {
+    val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val stroke = sizePx * 0.13f
+    val cx = sizePx / 2f
+    val cy = sizePx / 2f
+    val radius = cx - stroke / 2f
+
+    // Track
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = stroke
+    paint.strokeCap = Paint.Cap.ROUND
+    paint.color = 0x33888888.toInt()
+    canvas.drawCircle(cx, cy, radius, paint)
+
+    // Arc fill
+    if (hasData && percent > 0) {
+        paint.color = colorArgb
+        val inset = stroke / 2f
+        val oval = RectF(inset, inset, sizePx - inset, sizePx - inset)
+        canvas.drawArc(oval, -90f, 360f * percent / 100f, false, paint)
+    }
+
+    // Center text
+    paint.style = Paint.Style.FILL
+    paint.color = if (hasData) colorArgb else 0xFF888888.toInt()
+    paint.textSize = sizePx * 0.26f
+    paint.textAlign = Paint.Align.CENTER
+    paint.typeface = Typeface.DEFAULT_BOLD
+    val text = if (hasData) "$percent%" else "--"
+    val textY = cy - (paint.descent() + paint.ascent()) / 2f
+    canvas.drawText(text, cx, textY, paint)
+
+    return bmp
+}
+
+@Composable
+fun UsageCircle(percent: Int, hasData: Boolean, sizeDp: Dp) {
+    val context = LocalContext.current
+    val density = context.resources.displayMetrics.density
+    val sizePx = (sizeDp.value * density).toInt().coerceAtLeast(40)
+
+    val colorArgb = when {
+        !hasData -> 0xFF888888.toInt()
+        percent >= 90 -> 0xFFE57373.toInt()
+        percent >= 70 -> 0xFFFFB74D.toInt()
+        else -> 0xFF81C784.toInt()
+    }
+
+    val bitmap = createCircleBitmap(percent.coerceIn(0, 100), sizePx, colorArgb, hasData)
+
+    Image(
+        provider = ImageProvider(bitmap),
+        contentDescription = if (hasData) "$percent%" else "No data",
+        modifier = GlanceModifier.size(sizeDp)
+    )
+}
+
+// ─── Small (2×1) ──────────────────────────────────────────────────────────────
 
 @Composable
 fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
 
-    Column(
+    Row(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Usage: "S: 45%  W: 78%"
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+        // Session circle
+        Column(
+            modifier = GlanceModifier.defaultWeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 38.dp)
             Text(
-                text = "S: ",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
-            )
-            Text(
-                text = if (hasUsage) "${usage.sessionPercent}%" else "--",
-                style = TextStyle(
-                    color = if (hasUsage) progressColorProvider(usage.sessionPercent)
-                    else GlanceTheme.colors.secondary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-            Spacer(modifier = GlanceModifier.width(10.dp))
-            Text(
-                text = "W: ",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
-            )
-            Text(
-                text = if (hasUsage) "${usage.weeklyPercent}%" else "--",
-                style = TextStyle(
-                    color = if (hasUsage) progressColorProvider(usage.weeklyPercent)
-                    else GlanceTheme.colors.secondary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                text = "Session",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 9.sp)
             )
         }
-        Spacer(modifier = GlanceModifier.height(4.dp))
+
+        // Weekly circle
+        Column(
+            modifier = GlanceModifier.defaultWeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 38.dp)
+            Text(
+                text = "Weekly",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 9.sp)
+            )
+        }
+
         // Balance
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+        Column(
+            modifier = GlanceModifier.defaultWeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
                     color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                    fontSize = 13.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
-            Spacer(modifier = GlanceModifier.width(4.dp))
             Text(
-                text = "remaining",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                text = "balance",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 9.sp)
             )
         }
     }
@@ -159,159 +218,71 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
 
-    Column(
+    Row(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Session row
-        UsageRow(
-            label = "Session",
-            percent = if (hasUsage) usage.sessionPercent else null,
-            resetAtMs = usage.sessionResetAtMs
-        )
-        Spacer(modifier = GlanceModifier.height(4.dp))
-
-        // Weekly row
-        UsageRow(
-            label = "Weekly ",
-            percent = if (hasUsage) usage.weeklyPercent else null,
-            resetAtMs = usage.weeklyResetAtMs
-        )
-        Spacer(modifier = GlanceModifier.height(6.dp))
-
-        // Balance row
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+        // Session circle + label
+        Column(
+            modifier = GlanceModifier.defaultWeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 52.dp)
+            Spacer(modifier = GlanceModifier.height(3.dp))
             Text(
-                text = "Balance",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 13.sp
-                ),
-                modifier = GlanceModifier.width(52.dp)
-            )
-            Text(
-                text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)} remaining" else "--",
-                style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                ),
-                modifier = GlanceModifier.defaultWeight()
-            )
-            Text(
-                text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)} pending" else "",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 12.sp
-                )
+                text = "Session",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
         }
-    }
-}
 
-// ─── Large (4×2) ─────────────────────────────────────────────────────────────
-
-@Composable
-fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
-    val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
-    val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
-    val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
-
-    Column(modifier = GlanceModifier.fillMaxSize()) {
-        // Header
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+        // Weekly circle + label
+        Column(
+            modifier = GlanceModifier.defaultWeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 52.dp)
+            Spacer(modifier = GlanceModifier.height(3.dp))
             Text(
-                text = "Claude Usage",
-                style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                modifier = GlanceModifier.defaultWeight()
-            )
-            Text(
-                text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 12.sp
-                )
+                text = "Weekly",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
         }
-        Spacer(modifier = GlanceModifier.height(8.dp))
 
-        // Session row with inline bar
-        LargeUsageRow(
-            label = "Session",
-            percent = if (hasUsage) usage.sessionPercent else null,
-            resetAtMs = usage.sessionResetAtMs
-        )
-        Spacer(modifier = GlanceModifier.height(6.dp))
-
-        // Weekly row with inline bar
-        LargeUsageRow(
-            label = "Weekly ",
-            percent = if (hasUsage) usage.weeklyPercent else null,
-            resetAtMs = usage.weeklyResetAtMs
-        )
-        Spacer(modifier = GlanceModifier.height(10.dp))
-
-        // Balance section
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+        // Balance
+        Column(
+            modifier = GlanceModifier.defaultWeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Remaining Balance",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 13.sp
-                ),
-                modifier = GlanceModifier.defaultWeight()
-            )
             Text(
                 text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 16.sp,
+                    color = balanceColorProvider(balance.remainingUsd, hasBalance),
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
-        }
-        Spacer(modifier = GlanceModifier.height(4.dp))
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             Text(
-                text = "Pending this period",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 13.sp
-                ),
-                modifier = GlanceModifier.defaultWeight()
+                text = "remaining",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
-            Text(
-                text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)}" else "--",
-                style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+            if (hasBalance && balance.pendingUsd > 0) {
+                Spacer(modifier = GlanceModifier.height(2.dp))
+                Text(
+                    text = "\$${"%.2f".format(balance.pendingUsd)} pending",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
                 )
-            )
+            }
         }
     }
 }
 
-// ─── Extra Large (4×3): same as Large but more spacing & bigger text ──────────
+// ─── Large (4×2) ──────────────────────────────────────────────────────────────
 
 @Composable
-fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
@@ -333,31 +304,161 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             )
             Text(
                 text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 12.sp
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(8.dp))
+
+        // Circles row
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = GlanceModifier.defaultWeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 60.dp)
+                Spacer(modifier = GlanceModifier.height(3.dp))
+                Text(
+                    text = "Session",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
                 )
+                if (usage.sessionResetAtMs > 0) {
+                    Text(
+                        text = formatResetTime(usage.sessionResetAtMs),
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                    )
+                }
+            }
+            Column(
+                modifier = GlanceModifier.defaultWeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 60.dp)
+                Spacer(modifier = GlanceModifier.height(3.dp))
+                Text(
+                    text = "Weekly",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                )
+                if (usage.weeklyResetAtMs > 0) {
+                    Text(
+                        text = formatResetTime(usage.weeklyResetAtMs),
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                    )
+                }
+            }
+            // Balance column
+            Column(
+                modifier = GlanceModifier.defaultWeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Balance",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                )
+                Spacer(modifier = GlanceModifier.height(4.dp))
+                Text(
+                    text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
+                    style = TextStyle(
+                        color = balanceColorProvider(balance.remainingUsd, hasBalance),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                Text(
+                    text = "remaining",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                )
+                if (hasBalance) {
+                    Spacer(modifier = GlanceModifier.height(2.dp))
+                    Text(
+                        text = "\$${"%.2f".format(balance.pendingUsd)} pending",
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── Extra Large (4×3) ────────────────────────────────────────────────────────
+
+@Composable
+fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+    val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
+    val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
+    val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
+
+    Column(modifier = GlanceModifier.fillMaxSize()) {
+        // Header
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Claude Usage",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Text(
+                text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
             )
         }
         Spacer(modifier = GlanceModifier.height(12.dp))
 
-        // Session row
-        LargeUsageRow(
-            label = "Session",
-            percent = if (hasUsage) usage.sessionPercent else null,
-            resetAtMs = usage.sessionResetAtMs,
-            bigText = true
-        )
-        Spacer(modifier = GlanceModifier.height(10.dp))
+        // Circles row
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = GlanceModifier.defaultWeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 80.dp)
+                Spacer(modifier = GlanceModifier.height(4.dp))
+                Text(
+                    text = "Session",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
+                )
+                if (usage.sessionResetAtMs > 0) {
+                    Text(
+                        text = formatResetTime(usage.sessionResetAtMs),
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                    )
+                }
+            }
+            Column(
+                modifier = GlanceModifier.defaultWeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 80.dp)
+                Spacer(modifier = GlanceModifier.height(4.dp))
+                Text(
+                    text = "Weekly",
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
+                )
+                if (usage.weeklyResetAtMs > 0) {
+                    Text(
+                        text = formatResetTime(usage.weeklyResetAtMs),
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                    )
+                }
+            }
+        }
 
-        // Weekly row
-        LargeUsageRow(
-            label = "Weekly ",
-            percent = if (hasUsage) usage.weeklyPercent else null,
-            resetAtMs = usage.weeklyResetAtMs,
-            bigText = true
-        )
-        Spacer(modifier = GlanceModifier.height(16.dp))
+        Spacer(modifier = GlanceModifier.height(14.dp))
 
         // Balance section
         Row(
@@ -366,39 +467,33 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
         ) {
             Text(
                 text = "Remaining Balance",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 14.sp
-                ),
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp),
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
                 text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 22.sp,
+                    color = balanceColorProvider(balance.remainingUsd, hasBalance),
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
         }
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.height(6.dp))
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "Pending this period",
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = 14.sp
-                ),
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp),
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
                 text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)}" else "--",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -422,190 +517,19 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
     }
 }
 
-// ─── Shared composable rows ───────────────────────────────────────────────────
-
-/**
- * Compact row for the medium widget:
- * "Session  11%  ████░░░░░░  Resets in 3h 51m"
- */
-@Composable
-fun UsageRow(label: String, percent: Int?, resetAtMs: Long) {
-    val pct = percent ?: 0
-    val displayPct = if (percent != null) "$pct%" else "--"
-    val resetText = if (resetAtMs > 0) formatResetTime(resetAtMs) else ""
-
-    Row(
-        modifier = GlanceModifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = TextStyle(
-                color = GlanceTheme.colors.secondary,
-                fontSize = 13.sp
-            ),
-            modifier = GlanceModifier.width(52.dp)
-        )
-        Text(
-            text = displayPct,
-            style = TextStyle(
-                color = if (percent != null) progressColorProvider(pct)
-                else GlanceTheme.colors.secondary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            ),
-            modifier = GlanceModifier.width(30.dp)
-        )
-        Spacer(modifier = GlanceModifier.width(4.dp))
-        CompactProgressBar(
-            percent = pct,
-            modifier = GlanceModifier.defaultWeight().height(6.dp)
-        )
-        Spacer(modifier = GlanceModifier.width(4.dp))
-        Text(
-            text = resetText,
-            style = TextStyle(
-                color = GlanceTheme.colors.secondary,
-                fontSize = 11.sp
-            )
-        )
-    }
-}
-
-/**
- * Row for the large widget with a full-width bar underneath:
- * "Session  ████░░░░░░░░░░░░  11%    Resets in 3 hr 51 min"
- */
-@Composable
-fun LargeUsageRow(
-    label: String,
-    percent: Int?,
-    resetAtMs: Long,
-    bigText: Boolean = false
-) {
-    val pct = percent ?: 0
-    val displayPct = if (percent != null) "$pct%" else "--"
-    val resetText = if (resetAtMs > 0) formatResetTime(resetAtMs) else ""
-    val labelSize = if (bigText) 14.sp else 13.sp
-    val valueSize = if (bigText) 16.sp else 13.sp
-
-    Column(modifier = GlanceModifier.fillMaxWidth()) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = labelSize
-                ),
-                modifier = GlanceModifier.width(56.dp)
-            )
-            CompactProgressBar(
-                percent = pct,
-                modifier = GlanceModifier.defaultWeight().height(if (bigText) 10.dp else 8.dp)
-            )
-            Spacer(modifier = GlanceModifier.width(6.dp))
-            Text(
-                text = displayPct,
-                style = TextStyle(
-                    color = if (percent != null) progressColorProvider(pct)
-                    else GlanceTheme.colors.secondary,
-                    fontSize = valueSize,
-                    fontWeight = FontWeight.Bold
-                ),
-                modifier = GlanceModifier.width(34.dp)
-            )
-            Text(
-                text = resetText,
-                style = TextStyle(
-                    color = GlanceTheme.colors.secondary,
-                    fontSize = if (bigText) 13.sp else 11.sp
-                )
-            )
-        }
-    }
-}
-
-// ─── Progress bar ─────────────────────────────────────────────────────────────
-
-/**
- * A two-segment progress bar that fits inside any externally-sized container.
- * Uses integer dp widths (filled + empty = 100 dp) which scale proportionally
- * when the parent Row stretches the child to fill available space.
- */
-@Composable
-fun CompactProgressBar(percent: Int, modifier: GlanceModifier = GlanceModifier) {
-    val barColor = progressColorProvider(percent)
-    val clampedPercent = percent.coerceIn(0, 100)
-    val filledWeight = clampedPercent.coerceAtLeast(1)
-    val emptyWeight = (100 - clampedPercent).coerceAtLeast(1)
-
-    Row(modifier = modifier) {
-        Box(
-            modifier = GlanceModifier
-                .width(filledWeight.dp)
-                .fillMaxHeight()
-                .background(barColor)
-                .cornerRadius(4.dp)
-        ) {}
-        Box(
-            modifier = GlanceModifier
-                .width(emptyWeight.dp)
-                .fillMaxHeight()
-                .background(ColorProvider(Color(0x22888888)))
-                .cornerRadius(4.dp)
-        ) {}
-    }
-}
-
-/**
- * Two-segment horizontal bar. Glance's Row weight system renders each box
- * proportionally to its weight value (both segments sum to 100 units).
- */
-@Composable
-fun WidgetProgressBar(percent: Int, modifier: GlanceModifier = GlanceModifier) {
-    val barColor = progressColorProvider(percent)
-    val clampedPercent = percent.coerceIn(0, 100)
-    val filledWeight = clampedPercent.coerceAtLeast(1)
-    val emptyWeight = (100 - clampedPercent).coerceAtLeast(1)
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(8.dp)
-    ) {
-        Box(
-            modifier = GlanceModifier
-                .width(filledWeight.dp)
-                .fillMaxHeight()
-                .background(barColor)
-                .cornerRadius(4.dp)
-        ) {}
-        Box(
-            modifier = GlanceModifier
-                .width(emptyWeight.dp)
-                .fillMaxHeight()
-                .background(ColorProvider(Color(0x22888888)))
-                .cornerRadius(4.dp)
-        ) {}
-    }
-}
-
 // ─── Colour helpers ───────────────────────────────────────────────────────────
 
 fun progressColorProvider(percent: Int): ColorProvider = when {
-    percent >= 90 -> ColorProvider(Color(0xFFE57373))  // red
-    percent >= 70 -> ColorProvider(Color(0xFFFFB74D))  // amber
-    else -> ColorProvider(Color(0xFF81C784))            // green
+    percent >= 90 -> ColorProvider(Color(0xFFE57373))
+    percent >= 70 -> ColorProvider(Color(0xFFFFB74D))
+    else -> ColorProvider(Color(0xFF81C784))
 }
 
 fun balanceColorProvider(remainingUsd: Double, hasData: Boolean): ColorProvider = when {
     !hasData -> ColorProvider(Color(0xFF888888))
-    remainingUsd < 1.0 -> ColorProvider(Color(0xFFE57373))   // red – nearly empty
-    remainingUsd < 5.0 -> ColorProvider(Color(0xFFFFB74D))   // amber
-    else -> ColorProvider(Color(0xFF81C784))                  // green
+    remainingUsd < 1.0 -> ColorProvider(Color(0xFFE57373))
+    remainingUsd < 5.0 -> ColorProvider(Color(0xFFFFB74D))
+    else -> ColorProvider(Color(0xFF81C784))
 }
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────

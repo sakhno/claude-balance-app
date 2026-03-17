@@ -637,16 +637,20 @@ class PlatformCreditsClient {
         val cookie = "sessionKey=$sessionToken"
         return try {
             // 1. Discover the prepaid org UUID
+            AppLogger.d("Platform: fetching org list…")
             val orgUuid = fetchPrepaidOrgUuid(cookie)
-                ?: return ApiResult.Error("No prepaid org found", 404)
+            AppLogger.d("Platform: prepaid orgUuid=$orgUuid")
+            orgUuid ?: return ApiResult.Error("No prepaid org found", 404)
 
             // 2. Fetch credits for that org
             val response = service.getPrepaidCredits(cookie, orgId = orgUuid)
+            AppLogger.d("Platform: credits HTTP ${response.code()}")
             if (!response.isSuccessful) {
                 return ApiResult.Error("Credits fetch failed: ${response.code()}", response.code())
             }
             val body = response.body()?.string()
                 ?: return ApiResult.Error("Empty credits response")
+            AppLogger.d("Platform: credits body=$body")
             val adapter = moshi.adapter(PlatformCreditsResponse::class.java)
             val dto = adapter.fromJson(body)
                 ?: return ApiResult.Error("Could not parse credits response")
@@ -670,15 +674,18 @@ class PlatformCreditsClient {
     private suspend fun fetchPrepaidOrgUuid(cookie: String): String? {
         return try {
             val response = service.getOrganizations(cookie)
+            AppLogger.d("Platform: orgs HTTP ${response.code()}")
             if (!response.isSuccessful) return null
             val body = response.body()?.string() ?: return null
+            AppLogger.d("Platform: orgs body=${body.take(300)}")
             val type = Types.newParameterizedType(List::class.java, PlatformOrganization::class.java)
             val adapter = moshi.adapter<List<PlatformOrganization>>(type)
             val orgs = adapter.fromJson(body) ?: return null
             // Prefer prepaid org; fall back to first org
             orgs.firstOrNull { it.billingType == "prepaid" }?.uuid
                 ?: orgs.firstOrNull()?.uuid
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AppLogger.w("Platform: orgs fetch failed: ${e.message}")
             null
         }
     }
