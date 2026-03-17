@@ -30,6 +30,8 @@ class LoginWebViewActivity : ComponentActivity() {
 
     private lateinit var frame: FrameLayout
     private lateinit var webView: WebView
+    private var capturedSessionToken: String? = null
+    private var platformPageLoaded = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,13 +73,11 @@ class LoginWebViewActivity : ComponentActivity() {
                         ?.trim()
                     if (!token.isNullOrBlank()) {
                         AppLogger.d("Back pressed — returning existing session token")
-                        CookieManager.getInstance().flush()
-                        val result = Intent().apply { putExtra(RESULT_SESSION_TOKEN, token) }
-                        setResult(Activity.RESULT_OK, result)
+                        finishWithResult(token, null)
                     } else {
                         setResult(Activity.RESULT_CANCELED)
+                        finish()
                     }
-                    finish()
                 }
             }
         })
@@ -161,8 +161,7 @@ class LoginWebViewActivity : ComponentActivity() {
 
     private fun tryExtractSessionToken(url: String) {
         val cm = CookieManager.getInstance()
-        val cookieString = cm.getCookie("https://claude.ai")
-        val token = cookieString
+        val token = cm.getCookie("https://claude.ai")
             ?.split(";")
             ?.map { it.trim() }
             ?.firstOrNull { it.startsWith("sessionKey=") }
@@ -171,29 +170,47 @@ class LoginWebViewActivity : ComponentActivity() {
 
         AppLogger.d("page: $url | sessionKey=${if (token != null) "found (len=${token.length})" else "not found"}")
 
-        if (!token.isNullOrBlank()) {
-            // Check for routingHint in claude.ai cookies and platform.claude.com cookies
-            val routingHint = listOf("https://claude.ai", "https://platform.claude.com")
-                .flatMap { domain ->
-                    cm.getCookie(domain)
-                        ?.split(";")
-                        ?.map { it.trim() }
-                        ?: emptyList()
-                }
-                .firstOrNull { it.startsWith("routingHint=") }
-                ?.removePrefix("routingHint=")
-                ?.trim()
+        if (token.isNullOrBlank()) return
 
-            AppLogger.d("routingHint=${if (routingHint != null) "found (len=${routingHint.length})" else "not found"}")
+        // Check if we already have the platform.claude.com routingHint
+        val platformRoutingHint = cm.getCookie("https://platform.claude.com")
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("routingHint=") }
+            ?.removePrefix("routingHint=")
+            ?.trim()
 
-            cm.flush()
-            val result = Intent().apply {
-                putExtra(RESULT_SESSION_TOKEN, token)
-                if (!routingHint.isNullOrBlank()) putExtra(RESULT_ROUTING_HINT, routingHint)
-            }
-            setResult(Activity.RESULT_OK, result)
-            finish()
+        if (!platformRoutingHint.isNullOrBlank()) {
+            // Have both — done
+            AppLogger.d("platform routingHint found (len=${platformRoutingHint.length}), finishing")
+            finishWithResult(token, platformRoutingHint)
+            return
         }
+
+        // First time we see the session token: navigate to platform.claude.com to get its routingHint
+        if (capturedSessionToken == null && !platformPageLoaded) {
+            capturedSessionToken = token
+            platformPageLoaded = true
+            AppLogger.d("Session found — loading platform.claude.com to capture routingHint")
+            webView.loadUrl("https://platform.claude.com/")
+            return
+        }
+
+        // Already tried platform.claude.com (or we're on it now) but no routingHint yet — finish anyway
+        if (platformPageLoaded) {
+            AppLogger.d("platform.claude.com loaded but no routingHint — finishing without it")
+            finishWithResult(token, null)
+        }
+    }
+
+    private fun finishWithResult(token: String, routingHint: String?) {
+        CookieManager.getInstance().flush()
+        val result = Intent().apply {
+            putExtra(RESULT_SESSION_TOKEN, token)
+            if (!routingHint.isNullOrBlank()) putExtra(RESULT_ROUTING_HINT, routingHint)
+        }
+        setResult(Activity.RESULT_OK, result)
+        finish()
     }
 
     override fun onDestroy() {

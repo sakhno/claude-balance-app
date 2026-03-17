@@ -82,7 +82,7 @@ fun WidgetContent(
                 .padding(if (isSmall) 10.dp else 12.dp)
         ) {
             when {
-                isSmall -> SmallWidgetLayout(usage = usage, balance = balance)
+                isSmall -> SmallWidgetLayout(usage = usage, balance = balance, size = size)
                 isExtraLarge -> ExtraLargeWidgetLayout(usage = usage, balance = balance)
                 isLarge -> LargeWidgetLayout(usage = usage, balance = balance)
                 else -> MediumWidgetLayout(usage = usage, balance = balance)
@@ -155,11 +155,13 @@ fun UsageCircle(percent: Int, hasData: Boolean, sizeDp: Dp) {
 // ─── Small (2×1) ──────────────────────────────────────────────────────────────
 
 @Composable
-fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
 
-    // Working area ~120×40dp — no room for labels, circles fill the height
+    // Fill available height (minus 10dp padding top+bottom), cap at column width
+    val circleSizeDp = (size.height - 20.dp).coerceIn(24.dp, size.width / 3.5f)
+
     Row(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically
@@ -168,13 +170,13 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             modifier = GlanceModifier.defaultWeight(),
             contentAlignment = Alignment.Center
         ) {
-            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 40.dp)
+            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, circleSizeDp)
         }
         Box(
             modifier = GlanceModifier.defaultWeight(),
             contentAlignment = Alignment.Center
         ) {
-            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 40.dp)
+            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, circleSizeDp)
         }
         Box(
             modifier = GlanceModifier.defaultWeight(),
