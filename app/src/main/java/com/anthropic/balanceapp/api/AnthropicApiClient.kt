@@ -92,6 +92,8 @@ interface PlatformClaudeService {
         @Header("Cookie") cookie: String,
         @Header("anthropic-client-platform") platform: String = "web_console",
         @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)",
+        @Header("Referer") referer: String = "https://platform.claude.com/settings/billing",
+        @Header("Origin") origin: String = "https://platform.claude.com",
         @Path("orgId") orgId: String
     ): Response<ResponseBody>
 }
