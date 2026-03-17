@@ -76,7 +76,7 @@ fun WidgetContent(
                 .padding(if (isSmall) 10.dp else 14.dp)
         ) {
             when {
-                isSmall -> SmallWidgetLayout(balance = balance)
+                isSmall -> SmallWidgetLayout(usage = usage, balance = balance)
                 isExtraLarge -> ExtraLargeWidgetLayout(usage = usage, balance = balance)
                 isLarge -> LargeWidgetLayout(usage = usage, balance = balance)
                 else -> MediumWidgetLayout(usage = usage, balance = balance)
@@ -85,31 +85,70 @@ fun WidgetContent(
     }
 }
 
-// ─── Small (2×1): just the remaining balance ─────────────────────────────────
+// ─── Small (2×1): compact session/weekly + balance ───────────────────────────
 
 @Composable
-fun SmallWidgetLayout(balance: ApiBalance) {
+fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+    val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
+
     Column(
         modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
-            style = TextStyle(
-                color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
+        // Usage: "S: 45%  W: 78%"
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "S: ",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
             )
-        )
-        Text(
-            text = "remaining",
-            style = TextStyle(
-                color = GlanceTheme.colors.secondary,
-                fontSize = 12.sp
+            Text(
+                text = if (hasUsage) "${usage.sessionPercent}%" else "--",
+                style = TextStyle(
+                    color = if (hasUsage) progressColorProvider(usage.sessionPercent)
+                    else GlanceTheme.colors.secondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
             )
-        )
+            Spacer(modifier = GlanceModifier.width(10.dp))
+            Text(
+                text = "W: ",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
+            )
+            Text(
+                text = if (hasUsage) "${usage.weeklyPercent}%" else "--",
+                style = TextStyle(
+                    color = if (hasUsage) progressColorProvider(usage.weeklyPercent)
+                    else GlanceTheme.colors.secondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(4.dp))
+        // Balance
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
+                style = TextStyle(
+                    color = balanceColorProvider(balance.remainingUsd, hasBalance),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            Spacer(modifier = GlanceModifier.width(4.dp))
+            Text(
+                text = "remaining",
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+            )
+        }
     }
 }
 

@@ -86,7 +86,8 @@ class SyncWorker(
                 is ApiResult.Error -> {
                     AppLogger.w("Balance error (code=${result.code}): ${result.message}")
                     dataStore.saveApiBalanceError(result.message)
-                    if (result.code != 401 && result.code != 403) {
+                    // 401/403 = auth error, 404 = billing not available for this key — all permanent, no retry
+                    if (result.code != 401 && result.code != 403 && result.code != 404) {
                         anyRetryNeeded = true
                     }
                 }
