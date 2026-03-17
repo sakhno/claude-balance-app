@@ -172,7 +172,7 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 38.dp)
             Text(
                 text = "Session",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 9.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
         }
 
@@ -185,7 +185,7 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 38.dp)
             Text(
                 text = "Weekly",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 9.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
         }
 
@@ -199,13 +199,13 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
                     color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                    fontSize = 15.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
             Text(
                 text = "balance",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 9.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
             )
         }
     }
@@ -232,7 +232,7 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             Spacer(modifier = GlanceModifier.height(3.dp))
             Text(
                 text = "Session",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
             )
         }
 
@@ -246,7 +246,7 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             Spacer(modifier = GlanceModifier.height(3.dp))
             Text(
                 text = "Weekly",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
             )
         }
 
@@ -260,19 +260,19 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
                     color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                    fontSize = 18.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
             Text(
                 text = "remaining",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
             )
             if (hasBalance && balance.pendingUsd > 0) {
                 Spacer(modifier = GlanceModifier.height(2.dp))
                 Text(
                     text = "\$${"%.2f".format(balance.pendingUsd)} pending",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
                 )
             }
         }
@@ -297,14 +297,14 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 text = "Claude Usage",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 14.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
                 text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
             )
         }
         Spacer(modifier = GlanceModifier.height(8.dp))
@@ -323,12 +323,12 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 Spacer(modifier = GlanceModifier.height(3.dp))
                 Text(
                     text = "Session",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
                 )
                 if (usage.sessionResetAtMs > 0) {
                     Text(
                         text = formatResetTime(usage.sessionResetAtMs),
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
                     )
                 }
             }
@@ -341,12 +341,12 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 Spacer(modifier = GlanceModifier.height(3.dp))
                 Text(
                     text = "Weekly",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
                 )
                 if (usage.weeklyResetAtMs > 0) {
                     Text(
                         text = formatResetTime(usage.weeklyResetAtMs),
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
                     )
                 }
             }
@@ -358,26 +358,26 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             ) {
                 Text(
                     text = "Balance",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
                 )
                 Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                     style = TextStyle(
                         color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                        fontSize = 20.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
                 Text(
                     text = "remaining",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
                 )
                 if (hasBalance) {
                     Spacer(modifier = GlanceModifier.height(2.dp))
                     Text(
                         text = "\$${"%.2f".format(balance.pendingUsd)} pending",
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 10.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
                     )
                 }
             }
@@ -403,14 +403,14 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 text = "Claude Usage",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 15.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
                 text = if (updatedAtMs > 0) formatRelativeTime(updatedAtMs) else "",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 12.sp)
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp)
             )
         }
         Spacer(modifier = GlanceModifier.height(12.dp))
@@ -429,12 +429,12 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = "Session",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 16.sp)
                 )
                 if (usage.sessionResetAtMs > 0) {
                     Text(
                         text = formatResetTime(usage.sessionResetAtMs),
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
                     )
                 }
             }
@@ -447,12 +447,12 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = "Weekly",
-                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
+                    style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 16.sp)
                 )
                 if (usage.weeklyResetAtMs > 0) {
                     Text(
                         text = formatResetTime(usage.weeklyResetAtMs),
-                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 11.sp)
+                        style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 13.sp)
                     )
                 }
             }
@@ -467,14 +467,14 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
         ) {
             Text(
                 text = "Remaining Balance",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp),
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 17.sp),
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
                 text = if (hasBalance) "\$${"%.2f".format(balance.remainingUsd)}" else "--",
                 style = TextStyle(
                     color = balanceColorProvider(balance.remainingUsd, hasBalance),
-                    fontSize = 24.sp,
+                    fontSize = 29.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -486,14 +486,14 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
         ) {
             Text(
                 text = "Pending this period",
-                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 14.sp),
+                style = TextStyle(color = GlanceTheme.colors.secondary, fontSize = 17.sp),
                 modifier = GlanceModifier.defaultWeight()
             )
             Text(
                 text = if (hasBalance) "\$${"%.2f".format(balance.pendingUsd)}" else "--",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 20.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -510,7 +510,7 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 text = combinedError.take(100),
                 style = TextStyle(
                     color = ColorProvider(Color(0xFFE57373)),
-                    fontSize = 11.sp
+                    fontSize = 13.sp
                 )
             )
         }
