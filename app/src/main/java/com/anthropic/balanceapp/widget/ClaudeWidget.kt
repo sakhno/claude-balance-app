@@ -83,9 +83,9 @@ fun WidgetContent(
         ) {
             when {
                 isSmall -> SmallWidgetLayout(usage = usage, balance = balance, size = size)
-                isExtraLarge -> ExtraLargeWidgetLayout(usage = usage, balance = balance)
-                isLarge -> LargeWidgetLayout(usage = usage, balance = balance)
-                else -> MediumWidgetLayout(usage = usage, balance = balance)
+                isExtraLarge -> ExtraLargeWidgetLayout(usage = usage, balance = balance, size = size)
+                isLarge -> LargeWidgetLayout(usage = usage, balance = balance, size = size)
+                else -> MediumWidgetLayout(usage = usage, balance = balance, size = size)
             }
         }
     }
@@ -197,9 +197,11 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize)
 // ─── Medium (3×2) ─────────────────────────────────────────────────────────────
 
 @Composable
-fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
+    // circle + label (~19dp) + padding (24dp)
+    val circleSizeDp = (size.height - 43.dp).coerceIn(40.dp, 80.dp)
 
     Row(
         modifier = GlanceModifier.fillMaxSize(),
@@ -211,7 +213,7 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 52.dp)
+            UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, circleSizeDp)
             Spacer(modifier = GlanceModifier.height(3.dp))
             Text(
                 text = "Session",
@@ -225,7 +227,7 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 52.dp)
+            UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, circleSizeDp)
             Spacer(modifier = GlanceModifier.height(3.dp))
             Text(
                 text = "Weekly",
@@ -265,10 +267,12 @@ fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
 // ─── Large (4×2) ──────────────────────────────────────────────────────────────
 
 @Composable
-fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
+    // header (~24dp) + label+reset (~27dp) + padding (24dp)
+    val circleSizeDp = (size.height - 75.dp).coerceIn(40.dp, 90.dp)
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         // Header
@@ -302,7 +306,7 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 54.dp)
+                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, circleSizeDp)
                 Spacer(modifier = GlanceModifier.height(2.dp))
                 Text(
                     text = "Session",
@@ -320,7 +324,7 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 54.dp)
+                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, circleSizeDp)
                 Spacer(modifier = GlanceModifier.height(2.dp))
                 Text(
                     text = "Weekly",
@@ -371,10 +375,12 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
 // ─── Extra Large (4×3) ────────────────────────────────────────────────────────
 
 @Composable
-fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
+fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
+    // header + balance section (~90dp) + padding (24dp) + label+reset (~27dp)
+    val circleSizeDp = (size.height - 141.dp).coerceIn(60.dp, 140.dp)
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         // Header
@@ -408,7 +414,7 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, 80.dp)
+                UsageCircle(if (hasUsage) usage.sessionPercent else 0, hasUsage, circleSizeDp)
                 Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = "Session",
@@ -426,7 +432,7 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, 80.dp)
+                UsageCircle(if (hasUsage) usage.weeklyPercent else 0, hasUsage, circleSizeDp)
                 Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = "Weekly",
