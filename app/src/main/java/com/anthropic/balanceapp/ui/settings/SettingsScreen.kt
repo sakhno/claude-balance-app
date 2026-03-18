@@ -71,7 +71,7 @@ fun SettingsScreen(
             if (settings.claudeSessionToken.isNotBlank()) {
                 UsageSummaryCard(usage = uiState.claudeUsage)
             }
-            if (settings.claudeSessionToken.isNotBlank()) {
+            if (settings.claudeSessionToken.isNotBlank() || settings.anthropicAdminKey.isNotBlank()) {
                 BalanceSummaryCard(balance = uiState.apiBalance)
             }
 
@@ -175,7 +175,47 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Section 2: Widget Settings ────────────────────────────────────
+            // ── Section 2: Balance Tracking ───────────────────────────────────
+            SectionCard(title = "Balance Tracking (API Credits)") {
+                Text(
+                    text = "Add an Admin API Key to track your prepaid credit balance. " +
+                           "Create one at console.anthropic.com → Settings → Admin Keys.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                var showAdminKey by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = settings.anthropicAdminKey,
+                    onValueChange = { viewModel.updateAdminKey(it) },
+                    label = { Text("Admin API Key (optional)") },
+                    placeholder = { Text("sk-ant-admin01-...") },
+                    visualTransformation = if (showAdminKey) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showAdminKey = !showAdminKey }) {
+                            Icon(
+                                if (showAdminKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showAdminKey) "Hide" else "Show"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                if (settings.anthropicAdminKey.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "✓ Admin key saved — balance will be fetched on next sync",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // ── Section 3: Widget Settings ────────────────────────────────────
             SectionCard(title = "Widget Settings") {
                 Text(
                     text = "Update Interval",

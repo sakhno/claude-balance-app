@@ -103,6 +103,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(settings = it.settings.copy(alertsEnabled = enabled)) }
     }
 
+    fun updateAdminKey(key: String) {
+        _uiState.update { it.copy(settings = it.settings.copy(anthropicAdminKey = key)) }
+    }
+
     // ── Validation ────────────────────────────────────────────────────────────
 
     fun validateSessionToken() {
