@@ -187,11 +187,14 @@ class LoginWebViewActivity : ComponentActivity() {
             return
         }
 
-        // First time we see the session token: navigate to platform.claude.com to get its routingHint
+        // First time we see the session token: plant sessionKey on platform.claude.com domain
+        // then navigate there so the server authenticates and sets its routingHint cookie.
         if (capturedSessionToken == null && !platformPageLoaded) {
             capturedSessionToken = token
             platformPageLoaded = true
-            AppLogger.d("Session found — loading platform.claude.com to capture routingHint")
+            AppLogger.d("Session found — planting sessionKey on platform.claude.com and loading it")
+            cm.setCookie("https://platform.claude.com", "sessionKey=$token")
+            cm.flush()
             webView.loadUrl("https://platform.claude.com/")
             return
         }

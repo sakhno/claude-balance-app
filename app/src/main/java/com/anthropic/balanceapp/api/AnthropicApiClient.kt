@@ -642,7 +642,7 @@ class PlatformCreditsClient {
         }
         return try {
             // 1. Discover the prepaid org UUID
-            AppLogger.d("Platform: fetching org list… (routingHint=${if (routingHint != null) "set" else "missing"})")
+            AppLogger.d("Platform: fetching org list… (routingHint=${if (!routingHint.isNullOrBlank()) "len=${routingHint.length}" else "missing"})")
             val orgUuid = fetchPrepaidOrgUuid(cookie)
             AppLogger.d("Platform: prepaid orgUuid=$orgUuid")
             orgUuid ?: return ApiResult.Error("No prepaid org found", 404)
