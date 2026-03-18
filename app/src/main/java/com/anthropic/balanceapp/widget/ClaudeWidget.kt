@@ -43,9 +43,9 @@ class ClaudeWidget : GlanceAppWidget() {
         val EXTRA_LARGE = DpSize(350.dp, 200.dp)
     }
 
-    override val sizeMode = SizeMode.Responsive(
-        setOf(SMALL, MEDIUM, LARGE, EXTRA_LARGE)
-    )
+    // Exact mode: LocalSize.current = true rendered widget dimensions,
+    // so all dynamic circle sizing is based on the real available space.
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val dataStore = AppDataStore(context)
@@ -68,9 +68,10 @@ fun WidgetContent(
     balance: ApiBalance,
     size: DpSize
 ) {
-    val isSmall = size.width < 200.dp
-    val isExtraLarge = size.width >= 350.dp && size.height >= 200.dp
-    val isLarge = size.width >= 280.dp && size.height >= 140.dp
+    // Height drives layout choice — short widgets (1 row) can't fit labels regardless of width
+    val isCompact = size.height < 110.dp
+    val isFull = size.height >= 160.dp && size.width >= 280.dp
+    val isXL = size.height >= 200.dp && size.width >= 350.dp
 
     GlanceTheme {
         Box(
@@ -79,12 +80,12 @@ fun WidgetContent(
                 .background(GlanceTheme.colors.widgetBackground)
                 .cornerRadius(16.dp)
                 .clickable(actionRunCallback<OpenAppAction>())
-                .padding(if (isSmall) 10.dp else 12.dp)
+                .padding(if (isCompact) 10.dp else 12.dp)
         ) {
             when {
-                isSmall -> SmallWidgetLayout(usage = usage, balance = balance, size = size)
-                isExtraLarge -> ExtraLargeWidgetLayout(usage = usage, balance = balance, size = size)
-                isLarge -> LargeWidgetLayout(usage = usage, balance = balance, size = size)
+                isXL -> ExtraLargeWidgetLayout(usage = usage, balance = balance, size = size)
+                isFull -> LargeWidgetLayout(usage = usage, balance = balance, size = size)
+                isCompact -> SmallWidgetLayout(usage = usage, balance = balance, size = size)
                 else -> MediumWidgetLayout(usage = usage, balance = balance, size = size)
             }
         }
@@ -158,7 +159,8 @@ fun UsageCircle(percent: Int, hasData: Boolean, sizeDp: Dp) {
 fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
-    val circleSizeDp = 40.dp
+    // Fill available height; cap at ~1/3 width so balance text still fits
+    val circleSizeDp = (size.height - 20.dp).coerceIn(24.dp, size.width / 3.2f)
 
     Row(
         modifier = GlanceModifier.fillMaxSize(),
@@ -198,7 +200,7 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize)
 fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
-    val circleSizeDp = 60.dp
+    val circleSizeDp = (size.height - 43.dp).coerceIn(40.dp, 80.dp)
 
     Row(
         modifier = GlanceModifier.fillMaxSize(),
@@ -268,7 +270,7 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize)
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
-    val circleSizeDp = 72.dp
+    val circleSizeDp = (size.height - 75.dp).coerceIn(40.dp, 90.dp)
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         // Header
@@ -375,7 +377,7 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: Dp
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
-    val circleSizeDp = 100.dp
+    val circleSizeDp = (size.height * 0.42f).coerceIn(60.dp, 120.dp)
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         // Header

@@ -30,8 +30,6 @@ class LoginWebViewActivity : ComponentActivity() {
 
     private lateinit var frame: FrameLayout
     private lateinit var webView: WebView
-    private var capturedSessionToken: String? = null
-    private var platformPageLoaded = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,7 +113,7 @@ class LoginWebViewActivity : ComponentActivity() {
                     super.onPageFinished(view, url)
                     AppLogger.d("WebView page finished: $url")
                     progress?.visibility = android.view.View.GONE
-                    tryExtractSessionToken(url, pageFinished = true)
+                    tryExtractSessionToken(url)
                 }
                 // Fired on SPA pushState/replaceState navigation (no full page reload).
                 // Claude.ai is a React SPA — after login it navigates via pushState so
@@ -123,7 +121,7 @@ class LoginWebViewActivity : ComponentActivity() {
                 override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                     super.doUpdateVisitedHistory(view, url, isReload)
                     AppLogger.d("WebView URL change: $url")
-                    tryExtractSessionToken(url, pageFinished = false)
+                    tryExtractSessionToken(url)
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
             }
@@ -153,13 +151,13 @@ class LoginWebViewActivity : ComponentActivity() {
                     frame.removeView(window)
                     window.destroy()
                     // OAuth popup closed — cookie may now be set
-                    tryExtractSessionToken("https://claude.ai/", pageFinished = true)
+                    tryExtractSessionToken("https://claude.ai/")
                 }
             }
         }
     }
 
-    private fun tryExtractSessionToken(url: String, pageFinished: Boolean) {
+    private fun tryExtractSessionToken(url: String) {
         val cm = CookieManager.getInstance()
         val token = cm.getCookie("https://claude.ai")
             ?.split(";")
@@ -168,46 +166,19 @@ class LoginWebViewActivity : ComponentActivity() {
             ?.removePrefix("sessionKey=")
             ?.trim()
 
-        AppLogger.d("page: $url (finished=$pageFinished) | sessionKey=${if (token != null) "found" else "not found"}")
+        AppLogger.d("page: $url | sessionKey=${if (token != null) "found" else "not found"}")
 
         if (token.isNullOrBlank()) return
 
-        // Always check if routingHint has appeared yet
-        val platformRoutingHint = cm.getCookie("https://platform.claude.com")
-            ?.split(";")
-            ?.map { it.trim() }
-            ?.firstOrNull { it.startsWith("routingHint=") }
+        // Capture routingHint if present on either domain
+        val routingHint = listOf("https://claude.ai", "https://platform.claude.com")
+            .flatMap { domain -> cm.getCookie(domain)?.split(";")?.map { it.trim() } ?: emptyList() }
+            .firstOrNull { it.startsWith("routingHint=") }
             ?.removePrefix("routingHint=")
             ?.trim()
 
-        if (!platformRoutingHint.isNullOrBlank()) {
-            AppLogger.d("platform routingHint found (len=${platformRoutingHint.length}), finishing")
-            finishWithResult(token, platformRoutingHint)
-            return
-        }
-
-        if (!platformPageLoaded && pageFinished) {
-            // Only trigger platform navigation on a real page load (not SPA URL change),
-            // so autofill can complete its save flow before we navigate away.
-            capturedSessionToken = token
-            platformPageLoaded = true
-            AppLogger.d("Session found — planting sessionKey on platform.claude.com and loading it")
-            cm.setCookie("https://platform.claude.com", "sessionKey=$token")
-            cm.flush()
-            webView.loadUrl("https://platform.claude.com/")
-            // Do NOT finish here — wait for platform page to fully load
-            return
-        }
-
-        // Waiting for platform.claude.com to finish loading.
-        // Only give up once onPageFinished fires for that domain (not on SPA URL changes).
-        if (pageFinished && url.contains("platform.claude.com")) {
-            val platformCookies = cm.getCookie("https://platform.claude.com") ?: ""
-            AppLogger.d("platform.claude.com finished loading — cookies: ${platformCookies.take(300)}")
-            AppLogger.d("No routingHint found, finishing without it")
-            finishWithResult(token, null)
-        }
-        // Otherwise: still loading, keep waiting
+        AppLogger.d("finishing — routingHint=${if (routingHint != null) "found" else "missing"}")
+        finishWithResult(token, routingHint)
     }
 
     private fun finishWithResult(token: String, routingHint: String?) {

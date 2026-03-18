@@ -676,39 +676,50 @@ class PlatformCreditsClient {
         AppLogger.d("Platform: seeded cookies — sessionKey=set routingHint=${if (!routingHint.isNullOrBlank()) "set (len=${routingHint.length})" else "absent, will rely on server Set-Cookie"}")
 
         return try {
-            // 1. Discover the prepaid org UUID (server may set routingHint via Set-Cookie here)
-            val orgUuid = fetchPrepaidOrgUuid()
-            AppLogger.d("Platform: prepaid orgUuid=$orgUuid")
-            orgUuid ?: return ApiResult.Error("No prepaid org found", 404)
+            // 1. Fetch org list — server may set routingHint via Set-Cookie
+            val orgs = fetchOrgList()
+            if (orgs.isEmpty()) return ApiResult.Error("No orgs found", 404)
 
-            // Seed lastActiveOrg for billing context
-            cookieJar.seed(platformUrl, listOf(
-                Cookie.Builder().name("lastActiveOrg").value(orgUuid)
-                    .domain("platform.claude.com").path("/").build()
-            ))
-
-            // 2. Fetch credits — CookieJar now includes sessionKey + any server-set routingHint
-            val response = service.getPrepaidCredits(orgId = orgUuid)
-            AppLogger.d("Platform: credits HTTP ${response.code()}")
-            if (!response.isSuccessful) {
-                val errBody = response.errorBody()?.string() ?: ""
-                AppLogger.w("Platform: credits error body=$errBody")
-                return ApiResult.Error("Credits fetch failed: ${response.code()}", response.code())
+            // Try prepaid org first, then all others
+            val orderedUuids = buildList {
+                orgs.firstOrNull { it.billingType == "prepaid" }?.uuid?.let { add(it) }
+                orgs.filter { it.billingType != "prepaid" }.mapNotNull { it.uuid }.forEach { add(it) }
             }
-            val body = response.body()?.string()
-                ?: return ApiResult.Error("Empty credits response")
-            AppLogger.d("Platform: credits body=$body")
-            val adapter = moshi.adapter(PlatformCreditsResponse::class.java)
-            val dto = adapter.fromJson(body)
-                ?: return ApiResult.Error("Could not parse credits response")
+            AppLogger.d("Platform: will try org UUIDs: $orderedUuids")
 
-            val remaining = dto.amount ?: 0.0
-            val pendingCents = dto.pendingInvoiceAmountCents ?: 0L
-            ApiResult.Success(ApiBalance(
-                remainingUsd = remaining,
-                pendingUsd = pendingCents / 100.0,
-                fetchedAtMs = System.currentTimeMillis()
-            ))
+            for (orgUuid in orderedUuids) {
+                // Seed lastActiveOrg for billing context
+                cookieJar.seed(platformUrl, listOf(
+                    Cookie.Builder().name("lastActiveOrg").value(orgUuid)
+                        .domain("platform.claude.com").path("/").build()
+                ))
+
+                val response = service.getPrepaidCredits(orgId = orgUuid)
+                AppLogger.d("Platform: credits HTTP ${response.code()} for org=$orgUuid")
+                if (response.isSuccessful) {
+                    val body = response.body()?.string()
+                        ?: return ApiResult.Error("Empty credits response")
+                    AppLogger.d("Platform: credits body=$body")
+                    val adapter = moshi.adapter(PlatformCreditsResponse::class.java)
+                    val dto = adapter.fromJson(body)
+                        ?: return ApiResult.Error("Could not parse credits response")
+                    val remaining = dto.amount ?: 0.0
+                    val pendingCents = dto.pendingInvoiceAmountCents ?: 0L
+                    return ApiResult.Success(ApiBalance(
+                        remainingUsd = remaining,
+                        pendingUsd = pendingCents / 100.0,
+                        fetchedAtMs = System.currentTimeMillis()
+                    ))
+                } else {
+                    val errBody = response.errorBody()?.string() ?: ""
+                    AppLogger.w("Platform: credits failed (${response.code()}) for org=$orgUuid: $errBody")
+                    // Only retry with next org on auth errors; other errors are fatal
+                    if (response.code() != 403 && response.code() != 401) {
+                        return ApiResult.Error("Credits fetch failed: ${response.code()}", response.code())
+                    }
+                }
+            }
+            ApiResult.Error("No org returned credits (all returned 403)", 403)
         } catch (e: java.net.UnknownHostException) {
             ApiResult.NetworkError
         } catch (e: java.net.SocketTimeoutException) {
@@ -718,21 +729,19 @@ class PlatformCreditsClient {
         }
     }
 
-    private suspend fun fetchPrepaidOrgUuid(): String? {
+    private suspend fun fetchOrgList(): List<PlatformOrganization> {
         return try {
             val response = service.getOrganizations()
             AppLogger.d("Platform: orgs HTTP ${response.code()}")
-            if (!response.isSuccessful) return null
-            val body = response.body()?.string() ?: return null
-            AppLogger.d("Platform: orgs body=${body.take(300)}")
+            if (!response.isSuccessful) return emptyList()
+            val body = response.body()?.string() ?: return emptyList()
+            AppLogger.d("Platform: orgs body=${body.take(500)}")
             val type = Types.newParameterizedType(List::class.java, PlatformOrganization::class.java)
             val adapter = moshi.adapter<List<PlatformOrganization>>(type)
-            val orgs = adapter.fromJson(body) ?: return null
-            orgs.firstOrNull { it.billingType == "prepaid" }?.uuid
-                ?: orgs.firstOrNull()?.uuid
+            adapter.fromJson(body) ?: emptyList()
         } catch (e: Exception) {
             AppLogger.w("Platform: orgs fetch failed: ${e.message}")
-            null
+            emptyList()
         }
     }
 }
