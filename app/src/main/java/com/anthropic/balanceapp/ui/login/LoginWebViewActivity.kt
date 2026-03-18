@@ -186,8 +186,9 @@ class LoginWebViewActivity : ComponentActivity() {
             return
         }
 
-        if (!platformPageLoaded) {
-            // First time: plant sessionKey on platform.claude.com and navigate there
+        if (!platformPageLoaded && pageFinished) {
+            // Only trigger platform navigation on a real page load (not SPA URL change),
+            // so autofill can complete its save flow before we navigate away.
             capturedSessionToken = token
             platformPageLoaded = true
             AppLogger.d("Session found — planting sessionKey on platform.claude.com and loading it")

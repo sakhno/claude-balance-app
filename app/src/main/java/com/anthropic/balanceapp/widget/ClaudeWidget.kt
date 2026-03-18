@@ -43,9 +43,9 @@ class ClaudeWidget : GlanceAppWidget() {
         val EXTRA_LARGE = DpSize(350.dp, 200.dp)
     }
 
-    // SizeMode.Single: LocalSize.current reflects the actual rendered widget size,
-    // allowing all layouts to size their content dynamically.
-    override val sizeMode = SizeMode.Single
+    override val sizeMode = SizeMode.Responsive(
+        setOf(SMALL, MEDIUM, LARGE, EXTRA_LARGE)
+    )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val dataStore = AppDataStore(context)
@@ -158,9 +158,7 @@ fun UsageCircle(percent: Int, hasData: Boolean, sizeDp: Dp) {
 fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
-
-    // Fill available height (minus 10dp padding top+bottom), cap at column width
-    val circleSizeDp = (size.height - 20.dp).coerceIn(24.dp, size.width / 3.5f)
+    val circleSizeDp = 40.dp
 
     Row(
         modifier = GlanceModifier.fillMaxSize(),
@@ -200,8 +198,7 @@ fun SmallWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize)
 fun MediumWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize) {
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
-    // circle + label (~19dp) + padding (24dp)
-    val circleSizeDp = (size.height - 43.dp).coerceIn(40.dp, 80.dp)
+    val circleSizeDp = 60.dp
 
     Row(
         modifier = GlanceModifier.fillMaxSize(),
@@ -271,8 +268,7 @@ fun LargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: DpSize)
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
-    // header (~24dp) + label+reset (~27dp) + padding (24dp)
-    val circleSizeDp = (size.height - 75.dp).coerceIn(40.dp, 90.dp)
+    val circleSizeDp = 72.dp
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         // Header
@@ -379,8 +375,7 @@ fun ExtraLargeWidgetLayout(usage: ClaudeUsageData, balance: ApiBalance, size: Dp
     val hasUsage = usage.fetchedAtMs > 0 && usage.lastError.isEmpty()
     val hasBalance = balance.fetchedAtMs > 0 && balance.lastError.isEmpty()
     val updatedAtMs = maxOf(usage.fetchedAtMs, balance.fetchedAtMs)
-    // header + balance section (~90dp) + padding (24dp) + label+reset (~27dp)
-    val circleSizeDp = (size.height - 141.dp).coerceIn(60.dp, 140.dp)
+    val circleSizeDp = 100.dp
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         // Header
