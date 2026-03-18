@@ -14,6 +14,10 @@ import kotlin.math.roundToInt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.anthropic.balanceapp.logging.AppLogger
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
@@ -82,20 +86,32 @@ interface ClaudeAiService {
 interface PlatformClaudeService {
     @GET("api/organizations")
     suspend fun getOrganizations(
-        @Header("Cookie") cookie: String,
         @Header("anthropic-client-platform") platform: String = "web_console",
         @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)"
     ): Response<ResponseBody>
 
     @GET("api/organizations/{orgId}/prepaid/credits")
     suspend fun getPrepaidCredits(
-        @Header("Cookie") cookie: String,
         @Header("anthropic-client-platform") platform: String = "web_console",
         @Header("User-Agent") userAgent: String = "Mozilla/5.0 (Linux; Android 14)",
         @Header("Referer") referer: String = "https://platform.claude.com/settings/billing",
         @Header("Origin") origin: String = "https://platform.claude.com",
         @Path("orgId") orgId: String
     ): Response<ResponseBody>
+}
+
+/** Persists cookies per host across multiple requests within the same session. */
+private class InMemoryCookieJar : CookieJar {
+    private val store = mutableMapOf<String, MutableList<Cookie>>()
+
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        val list = store.getOrPut(url.host) { mutableListOf() }
+        cookies.forEach { new -> list.removeAll { it.name == new.name }; list.add(new) }
+    }
+
+    override fun loadForRequest(url: HttpUrl): List<Cookie> = store[url.host] ?: emptyList()
+
+    fun seed(url: HttpUrl, cookies: List<Cookie>) = saveFromResponse(url, cookies)
 }
 
 interface AnthropicApiService {
@@ -625,31 +641,54 @@ class AnthropicBalanceClient {
 class PlatformCreditsClient {
 
     private val moshi = buildMoshi()
+    private val cookieJar = InMemoryCookieJar()
 
     private val service: PlatformClaudeService by lazy {
         Retrofit.Builder()
             .baseUrl("https://platform.claude.com/")
-            .client(buildOkHttpClient())
+            .client(
+                OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    .cookieJar(cookieJar)
+                    .build()
+            )
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(PlatformClaudeService::class.java)
     }
 
     suspend fun fetchBalance(sessionToken: String, routingHint: String? = null): ApiResult<ApiBalance> {
-        val cookie = buildString {
-            append("sessionKey=$sessionToken")
-            if (!routingHint.isNullOrBlank()) append("; routingHint=$routingHint")
+        // Seed the cookie jar so OkHttp sends them automatically on every request.
+        // The server may return Set-Cookie: routingHint=... on the first call; the jar
+        // will capture it and include it in all subsequent requests automatically.
+        val platformUrl = "https://platform.claude.com/".toHttpUrl()
+        val seedCookies = buildList {
+            add(Cookie.Builder().name("sessionKey").value(sessionToken)
+                .domain("platform.claude.com").path("/").build())
+            if (!routingHint.isNullOrBlank()) {
+                add(Cookie.Builder().name("routingHint").value(routingHint)
+                    .domain("platform.claude.com").path("/").build())
+            }
         }
+        cookieJar.seed(platformUrl, seedCookies)
+        AppLogger.d("Platform: seeded cookies — sessionKey=set routingHint=${if (!routingHint.isNullOrBlank()) "set (len=${routingHint.length})" else "absent, will rely on server Set-Cookie"}")
+
         return try {
-            // 1. Discover the prepaid org UUID
-            AppLogger.d("Platform: fetching org list… (routingHint=${if (!routingHint.isNullOrBlank()) "len=${routingHint.length}" else "missing"})")
-            val orgUuid = fetchPrepaidOrgUuid(cookie)
+            // 1. Discover the prepaid org UUID (server may set routingHint via Set-Cookie here)
+            val orgUuid = fetchPrepaidOrgUuid()
             AppLogger.d("Platform: prepaid orgUuid=$orgUuid")
             orgUuid ?: return ApiResult.Error("No prepaid org found", 404)
 
-            // 2. Fetch credits for that org (include lastActiveOrg cookie for billing context)
-            val creditsCookie = "$cookie; lastActiveOrg=$orgUuid"
-            val response = service.getPrepaidCredits(creditsCookie, orgId = orgUuid)
+            // Seed lastActiveOrg for billing context
+            cookieJar.seed(platformUrl, listOf(
+                Cookie.Builder().name("lastActiveOrg").value(orgUuid)
+                    .domain("platform.claude.com").path("/").build()
+            ))
+
+            // 2. Fetch credits — CookieJar now includes sessionKey + any server-set routingHint
+            val response = service.getPrepaidCredits(orgId = orgUuid)
             AppLogger.d("Platform: credits HTTP ${response.code()}")
             if (!response.isSuccessful) {
                 val errBody = response.errorBody()?.string() ?: ""
@@ -679,9 +718,9 @@ class PlatformCreditsClient {
         }
     }
 
-    private suspend fun fetchPrepaidOrgUuid(cookie: String): String? {
+    private suspend fun fetchPrepaidOrgUuid(): String? {
         return try {
-            val response = service.getOrganizations(cookie)
+            val response = service.getOrganizations()
             AppLogger.d("Platform: orgs HTTP ${response.code()}")
             if (!response.isSuccessful) return null
             val body = response.body()?.string() ?: return null
@@ -689,7 +728,6 @@ class PlatformCreditsClient {
             val type = Types.newParameterizedType(List::class.java, PlatformOrganization::class.java)
             val adapter = moshi.adapter<List<PlatformOrganization>>(type)
             val orgs = adapter.fromJson(body) ?: return null
-            // Prefer prepaid org; fall back to first org
             orgs.firstOrNull { it.billingType == "prepaid" }?.uuid
                 ?: orgs.firstOrNull()?.uuid
         } catch (e: Exception) {
