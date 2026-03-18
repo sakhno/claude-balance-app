@@ -43,9 +43,9 @@ class ClaudeWidget : GlanceAppWidget() {
         val EXTRA_LARGE = DpSize(350.dp, 200.dp)
     }
 
-    override val sizeMode = SizeMode.Responsive(
-        setOf(SMALL, MEDIUM, LARGE, EXTRA_LARGE)
-    )
+    // SizeMode.Single: LocalSize.current reflects the actual rendered widget size,
+    // allowing all layouts to size their content dynamically.
+    override val sizeMode = SizeMode.Single
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val dataStore = AppDataStore(context)
