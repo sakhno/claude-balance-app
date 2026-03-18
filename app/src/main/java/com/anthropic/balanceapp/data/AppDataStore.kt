@@ -17,6 +17,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "ba
 data class AppSettings(
     val claudeSessionToken: String = "",
     val anthropicApiKey: String = "",
+    val anthropicAdminKey: String = "",
     val platformRoutingHint: String = "",
     val updateIntervalMinutes: Int = 60,
     val alertSessionThresholdPercent: Int = 80,
@@ -43,6 +44,7 @@ class AppDataStore(private val context: Context) {
         // Credentials
         val CLAUDE_SESSION_TOKEN = stringPreferencesKey("claude_session_token")
         val ANTHROPIC_API_KEY = stringPreferencesKey("anthropic_api_key")
+        val ANTHROPIC_ADMIN_KEY = stringPreferencesKey("anthropic_admin_key")
         val PLATFORM_ROUTING_HINT = stringPreferencesKey("platform_routing_hint")
 
         // Widget & sync settings
@@ -79,6 +81,7 @@ class AppDataStore(private val context: Context) {
             AppSettings(
                 claudeSessionToken = prefs[CLAUDE_SESSION_TOKEN] ?: "",
                 anthropicApiKey = prefs[ANTHROPIC_API_KEY] ?: "",
+                anthropicAdminKey = prefs[ANTHROPIC_ADMIN_KEY] ?: "",
                 platformRoutingHint = prefs[PLATFORM_ROUTING_HINT] ?: "",
                 updateIntervalMinutes = prefs[UPDATE_INTERVAL_MINUTES] ?: 60,
                 alertSessionThresholdPercent = prefs[ALERT_SESSION_THRESHOLD] ?: 80,
@@ -125,6 +128,7 @@ class AppDataStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[CLAUDE_SESSION_TOKEN] = settings.claudeSessionToken
             prefs[ANTHROPIC_API_KEY] = settings.anthropicApiKey
+            prefs[ANTHROPIC_ADMIN_KEY] = settings.anthropicAdminKey
             prefs[PLATFORM_ROUTING_HINT] = settings.platformRoutingHint
             prefs[UPDATE_INTERVAL_MINUTES] = settings.updateIntervalMinutes
             prefs[ALERT_SESSION_THRESHOLD] = settings.alertSessionThresholdPercent

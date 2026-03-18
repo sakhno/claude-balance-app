@@ -121,6 +121,13 @@ interface AnthropicApiService {
         @Header("anthropic-version") version: String = "2023-06-01"
     ): Response<ResponseBody>
 
+    // Admin API endpoint — requires sk-ant-admin... key
+    @GET("v1/organizations/credit_balance")
+    suspend fun getOrgCreditBalance(
+        @Header("x-api-key") apiKey: String,
+        @Header("anthropic-version") version: String = "2023-06-01"
+    ): Response<ResponseBody>
+
     @GET("v1/billing/balance")
     suspend fun getBillingBalance(
         @Header("x-api-key") apiKey: String,
@@ -537,6 +544,13 @@ class AnthropicBalanceClient {
 
     suspend fun fetchBalance(apiKey: String): ApiResult<ApiBalance> {
         return try {
+            // Admin key path — uses the dedicated credit_balance endpoint
+            if (apiKey.startsWith("sk-ant-admin")) {
+                val adminResult = tryOrgCreditBalance(apiKey)
+                if (adminResult is ApiResult.Success) return adminResult
+                AppLogger.w("Admin credit_balance failed, trying legacy endpoints")
+            }
+
             // Primary endpoint
             val primary = tryBillingBalance(apiKey)
             if (primary is ApiResult.Success) return primary
@@ -553,6 +567,27 @@ class AnthropicBalanceClient {
             ApiResult.Error("Request timed out")
         } catch (e: Exception) {
             ApiResult.Error("Unexpected error: ${e.localizedMessage}")
+        }
+    }
+
+    private suspend fun tryOrgCreditBalance(apiKey: String): ApiResult<ApiBalance> {
+        return try {
+            val response = service.getOrgCreditBalance(apiKey)
+            AppLogger.d("credit_balance HTTP ${response.code()}")
+            if (!response.isSuccessful) {
+                return ApiResult.Error("credit_balance: ${response.code()}", response.code())
+            }
+            val body = response.body()?.string() ?: return ApiResult.Error("Empty response")
+            AppLogger.d("credit_balance body=$body")
+            // Response: {"available_credit":"66.00","currency":"USD"}
+            val moshi = buildMoshi()
+            val adapter = moshi.adapter(Map::class.java)
+            @Suppress("UNCHECKED_CAST")
+            val map = adapter.fromJson(body) as? Map<String, Any>
+            val credit = map?.get("available_credit")?.toString()?.toDoubleOrNull() ?: 0.0
+            ApiResult.Success(ApiBalance(remainingUsd = credit, fetchedAtMs = System.currentTimeMillis()))
+        } catch (e: Exception) {
+            ApiResult.Error("credit_balance error: ${e.localizedMessage}")
         }
     }
 

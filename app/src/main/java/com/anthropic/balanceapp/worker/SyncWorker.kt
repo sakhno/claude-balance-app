@@ -2,6 +2,7 @@ package com.anthropic.balanceapp.worker
 
 import android.content.Context
 import androidx.work.*
+import com.anthropic.balanceapp.api.AnthropicBalanceClient
 import com.anthropic.balanceapp.api.PlatformCreditsClient
 import com.anthropic.balanceapp.api.ApiResult
 import com.anthropic.balanceapp.api.ClaudeAiApiClient
@@ -19,6 +20,7 @@ class SyncWorker(
     private val dataStore = AppDataStore(appContext)
     private val claudeClient = ClaudeAiApiClient()
     private val balanceClient = PlatformCreditsClient()
+    private val adminBalanceClient = AnthropicBalanceClient()
     private val alertManager = AlertManager(appContext)
 
     override suspend fun doWork(): Result {
@@ -64,13 +66,20 @@ class SyncWorker(
             AppLogger.d("No Claude session token configured, skipping usage fetch")
         }
 
-        // ── 2. Fetch prepaid credit balance from platform.claude.com ─────────
-        if (settings.claudeSessionToken.isNotBlank()) {
-            AppLogger.d("Fetching prepaid credit balance…")
-            when (val result = balanceClient.fetchBalance(
-                settings.claudeSessionToken,
-                settings.platformRoutingHint.takeIf { it.isNotBlank() }
-            )) {
+        // ── 2. Fetch prepaid credit balance ───────────────────────────────────
+        // Prefer admin API key (clean, no routingHint needed); fall back to platform session
+        val hasAdminKey = settings.anthropicAdminKey.isNotBlank()
+        if (hasAdminKey || settings.claudeSessionToken.isNotBlank()) {
+            AppLogger.d("Fetching prepaid credit balance… (method=${if (hasAdminKey) "admin key" else "session token"})")
+            val result = if (hasAdminKey) {
+                adminBalanceClient.fetchBalance(settings.anthropicAdminKey)
+            } else {
+                balanceClient.fetchBalance(
+                    settings.claudeSessionToken,
+                    settings.platformRoutingHint.takeIf { it.isNotBlank() }
+                )
+            }
+            when (result) {
                 is ApiResult.Success -> {
                     val balance = result.data
                     AppLogger.d("Balance OK — remaining=\$${balance.remainingUsd} pending=\$${balance.pendingUsd}")
